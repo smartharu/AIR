@@ -1,0 +1,7 @@
+
+*.pth
+/.idea
+/data/__pycache__
+*.png
+/nets/__pycache__
+*.onnx
