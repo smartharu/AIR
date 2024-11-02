@@ -14,6 +14,7 @@ from typing import Any, Mapping, Optional, Sequence, Union, Tuple
 from wand.image import Image, IMAGE_TYPES
 import wand
 from scipy import special
+from PIL import Image as pim
 
 GRAYSCALE_TYPES = {
     "grayscale",
@@ -1250,6 +1251,31 @@ class RandomBlur:
 
         return ret
 
+class RandomBlend:
+    def __init__(self, prob: float = 0.3, color_prob:float=0.3) -> None:
+        self.prob = prob
+        self.color_prob = color_prob
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        if random.uniform(0, 1) > self.prob:
+            return x
+        c, h, w = x.shape
+        x = torchvision.transforms.functional.to_pil_image(x)
+        alpha = random.uniform(0,1)
+        if random.uniform(0,1)<self.color_prob:
+            gray = random.randint(0,255)
+            bg_color = (gray,gray,gray)
+        else:
+            r = random.randint(0,255)
+            g = random.randint(0, 255)
+            b = random.randint(0, 255)
+            bg_color = (r,g,b)
+
+        bg = pim.new("RGB", (h, w), bg_color)
+
+        ret = pim.blend(x,bg,alpha)
+        ret = torchvision.transforms.functional.to_tensor(ret)
+        return ret
 
 class RandomSafeRotate:
     def __init__(self, prob: float = 0.3) -> None:
@@ -1558,12 +1584,11 @@ def load_data(batch_size, crop_height, crop_width, scale):
         drop_last=True, num_workers=num_workers)
     return train_iter, test_iter
 
-'''
+
 if __name__ == "__main__":
-    img = test_images("lun39b.png")
-    img = resize(img, img.shape[2] * 2, img.shape[1] * 2, "lanczossharp")
-    img = resize(img, img.shape[2] //2, img.shape[1] //2, "box").clamp(0,1)
+    img = test_images("__NEAREST__DOT_1443.png")
+    img = RandomBlend(prob=1.0)(img)
     img = TT.ToPILImage()(img)
     img.save("out2.png")
-'''
+
 #triangle
