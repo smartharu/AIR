@@ -5,3 +5,5 @@
 *.png
 /nets/__pycache__
 *.onnx
+*.pyc
+*.log

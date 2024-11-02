@@ -12,6 +12,7 @@ from data.transform import RandomBlur, RandomGray, RandomGaussianBlur, RandomLan
 from data.rescale import RandomRescale, A4KRandomDownscale, AntialiasX
 from data.noise import RandomNoise
 from data.utils import RamdomAugBorder
+from utils.logger import logger
 from typing import Sequence, Tuple
 
 np.seterr(invalid='ignore')
@@ -159,8 +160,8 @@ class TrainDataset(torch.utils.data.Dataset):
             ]
         )
 
-        print('read ' + str(self.image_counts) + ' pictures')
-        print('read ' + str(len(self.images)) + ' examples')
+        logger.info('read ' + str(self.image_counts) + ' pictures')
+        logger.info('read ' + str(len(self.images)) + ' examples')
 
     def __getitem__(self, idx):
         if self.is_train:

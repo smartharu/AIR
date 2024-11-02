@@ -1,15 +1,12 @@
 import math
 import numpy as np
 import torch
-import os
-import torchvision.transforms.functional
-from torch.optim.adam import Adam
+from utils import logger
 from torch.optim.adamw import AdamW
 import os
 import torch.nn as nn
-from nets import sunet_arch,srvgg_arch,span_arch
-from data import dataset,dataset_neo
-import random
+from nets import sunet_arch, srvgg_arch, span_arch
+from data import dataset, dataset_neo
 import traceback
 
 
@@ -20,11 +17,11 @@ class Trainer:
         self.batch_size = 64
         self.crop_size = 128
         self.device = torch.device("cuda:0")
-        #self.netG = sunet_arch.UNetResA(3, 3, [32, 64, 96, 128], [4, 4, 4, 4], True).to(self.device)
-        #self.netG = srvgg_arch.SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=24, num_conv=8, upscale=2).to(self.device)
-        self.netG = span_arch.SPAN(3,3,48,2,True).to(self.device)
-        #self.netG = sunet_arch.SPAU(bias=True).to(self.device)
-        #self.netG = srvgg_arch.SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=48, num_conv=16, upscale=2, act_type='prelu').to(self.device)
+        # self.netG = sunet_arch.UNetResA(3, 3, [32, 64, 96, 128], [4, 4, 4, 4], True).to(self.device)
+        # self.netG = srvgg_arch.SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=24, num_conv=8, upscale=2).to(self.device)
+        self.netG = span_arch.SPAN(3, 3, 48, 2, True).to(self.device)
+        # self.netG = sunet_arch.SPAU(bias=True).to(self.device)
+        # self.netG = srvgg_arch.SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=48, num_conv=16, upscale=2, act_type='prelu').to(self.device)
 
         self.model_name = self.netG.get_model_name()
 
@@ -36,25 +33,27 @@ class Trainer:
         self.trainerG = AdamW(self.netG.parameters(), lr=self.lr, weight_decay=0.001)
 
         self.load_model()
-        #self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.trainerG, milestones=[100,200,300,400], gamma=0.5,last_epoch=self.cur_epoch - 1)
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.trainerG,T_0=10,eta_min=self.lr * 5e-3)
-        #self.update_lr()
+        self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.trainerG, milestones=[100, 200, 300, 400], gamma=0.5,
+                                                              last_epoch=self.cur_epoch - 1)
+        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.trainerG,T_0=10,eta_min=self.lr * 5e-3)
+        # self.update_lr()
         self.train_iter, self.test_iter = dataset_neo.load_data(self.batch_size, self.crop_size, self.crop_size,
-                                                            scale=self.scale)
+                                                                scale=self.scale)
         self.total_step = len(self.train_iter)
-        self.step_index = 0
 
         self.content_loss_factor = 1.0
 
     def train(self):
         content_criterion = nn.L1Loss().to(self.device)
         self.netG.train()
+        logger.info(f"network:{self.model_name}, scale:{self.scale}")
+        logger.info("Start training!")
 
         for epoch in range(self.cur_epoch + 1, self.epochs + 1):
-            # self.step_index = 0
+            logger.info(f"Epoch:{epoch}")
             psnr = []
-
-            for blur, sharp in self.train_iter:
+            for iteration, data in enumerate(self.train_iter):
+                blur, sharp = data
                 blur = blur.to(self.device)
                 sharp = sharp.to(self.device)
 
@@ -65,6 +64,7 @@ class Trainer:
                 temp_psnr = cal_psnr(fake_sharp, sharp)
 
                 if epoch > 1 and temp_psnr < 0:
+                    logger.info("psnr error! Try to restart training.")
                     raise ValueError("psnr error! try to restart training.")
                 psnr.append(temp_psnr)
 
@@ -73,34 +73,26 @@ class Trainer:
                 generator_loss.backward()
                 self.trainerG.step()
 
-                self.step_index += 1
-
-                if self.step_index % 80 == 0:
-                    print(f"[EPOCH {epoch}]"
-                          f"[TRAIN_PSNR {temp_psnr:.4f}]"
-                          f"[LR {self.trainerG.state_dict()['param_groups'][0]['lr']}]")
-
-                    self.step_index = 0
+                if iteration % 80 == 0:
+                    logger.info(
+                        f"[TRAIN_PSNR {temp_psnr:.4f}] [LR {self.trainerG.state_dict()['param_groups'][0]['lr']}]")
 
             self.scheduler.step()
             train_psnr = np.mean(psnr)
             val_psnr = evaluate_accuracy(self.netG, self.test_iter, self.device)
 
-            torch.save({'model_state_dict': self.netG.state_dict(),
-                        'trainer_state_dict': self.trainerG.state_dict(),
+            torch.save({'model_state_dict': self.netG.state_dict(), 'trainer_state_dict': self.trainerG.state_dict(),
                         'epoch': epoch}, self.model_name + ".pth")
-            if epoch in [100, 200, 300, 400]:
+            if epoch % 20 == 0:
                 torch.save({'model_state_dict': self.netG.state_dict(),
                             'trainer_state_dict': self.trainerG.state_dict(),
                             'epoch': epoch}, self.model_name + "_epoch_" + str(epoch) + ".pth")
-            print(f"[EPOCH {epoch}]"
-                  f"[TRAIN_PSNR {train_psnr:.4f}]"
-                  f"[VAL_PSNR {val_psnr:.4f}]"
-                  f"[LR {self.trainerG.state_dict()['param_groups'][0]['lr']}]")
+            logger.info(
+                f"[EPOCH {epoch}] [TRAIN_PSNR {train_psnr:.4f}] [VAL_PSNR {val_psnr:.4f}] [LR {self.trainerG.state_dict()['param_groups'][0]['lr']}]")
 
     def load_model(self):
         if os.path.exists(self.model_name + ".pth"):
-            print(f"{self.model_name}加载模型")
+            logger.info(f"{self.model_name}加载模型")
             checkpointG = torch.load(self.model_name + ".pth")
             self.netG.load_state_dict(checkpointG['model_state_dict'])
             self.trainerG.load_state_dict(checkpointG['trainer_state_dict'])
@@ -109,7 +101,7 @@ class Trainer:
         if self.restart_epoch:
             self.cur_epoch = 0
 
-        print(self.trainerG.state_dict()['param_groups'][0]['lr'])
+        logger.info(self.trainerG.state_dict()['param_groups'][0]['lr'])
 
     def update_lr(self):
         for p in self.trainerG.param_groups:
@@ -140,6 +132,7 @@ def evaluate_accuracy(net, data_iter, device):
 
 
 if __name__ == '__main__':
+
     np.seterr(invalid='ignore')
     cnt = 50
     while cnt:
