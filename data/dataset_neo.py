@@ -7,11 +7,11 @@ import torchvision.transforms.functional as TTF
 from torch.nn import functional as F
 from torch.utils import data
 import os
-from data.jpeg import RandomJPEGNoise, RandomBlock
-from data.transform import RandomBlur, RandomGray, RandomGaussianBlur, RandomLanczosFilter, RandomSincFilter, RandomSharpen
-from data.rescale import RandomRescale, A4KRandomDownscale, AntialiasX
-from data.noise import RandomNoise
-from data.utils import RamdomAugBorder
+from .jpeg import RandomJPEGNoise, RandomBlock
+from .transform import RandomBlur, RandomGray, RandomGaussianBlur, RandomLanczosFilter, RandomSincFilter, RandomSharpen
+from .rescale import RandomRescale, A4KRandomDownscale, AntialiasX
+from .noise import RandomNoise
+from .utils import RamdomAugBorder
 from utils.logger import logger
 from typing import Sequence, Tuple
 
