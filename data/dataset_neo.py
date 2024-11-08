@@ -7,11 +7,11 @@ import torchvision.transforms.functional as TTF
 from torch.nn import functional as F
 from torch.utils import data
 import os
-from data.jpeg import RandomJPEGNoise, RandomBlock
-from data.transform import RandomBlur, RandomGray, RandomGaussianBlur, RandomLanczosFilter, RandomSincFilter, RandomSharpen
-from data.rescale import RandomRescale, A4KRandomDownscale, AntialiasX
-from data.noise import RandomNoise
-from data.utils import RamdomAugBorder
+from .jpeg import RandomJPEGNoise, RandomBlock
+from .transform import RandomBlur, RandomGray, RandomGaussianBlur, RandomLanczosFilter, RandomSincFilter, RandomSharpen
+from .rescale import RandomRescale, A4KRandomDownscale, AntialiasX
+from .noise import RandomNoise
+from .utils import RamdomAugBorder
 from utils.logger import logger
 from typing import Sequence, Tuple
 
@@ -86,6 +86,13 @@ class TrainDataset(torch.utils.data.Dataset):
             ]
         )
 
+        self.transform_IDENTITY = TT.Compose(
+            [
+                RandomGaussianBlur(prob=0.4, kernel_size=(3, 21), sigma=(0.2, 0.5)),
+            ]
+        )
+
+
         self.transform_IR_TEST = TT.Compose(
             [
 
@@ -104,7 +111,7 @@ class TrainDataset(torch.utils.data.Dataset):
                     RandomJPEGNoise(prob=0.4, jpeg_q=(95, 100), css_prob=1.0)
                 ]),
                 TT.RandomOrder([
-                    RandomNoise(prob=0.4, gaussian_factor=25, gray_prob=0.5, blur_prob=0.3),
+                    RandomNoise(prob=0.4, gaussian_factor=25, gray_prob=0.5, blur_prob=0.2),
                     RandomJPEGNoise(prob=0.4, jpeg_q=(25, 95), css_prob=0.0)
                 ])
             ]
@@ -183,6 +190,7 @@ class TrainDataset(torch.utils.data.Dataset):
                     # print(lr.shape)
 
                 lr = self.transform_IR_TEST(lr)
+                lr = self.transform_IDENTITY(lr)
                 # lr = self.transform_EDGE(lr)
 
                 if f == 1:

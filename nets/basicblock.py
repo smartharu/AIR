@@ -129,9 +129,9 @@ class CALayer(nn.Module):
 
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.conv_fc = nn.Sequential(
-            nn.Conv2d(channel, math.floor(channel / reduction), 1, padding=0, bias=bias),
+            nn.Conv2d(channel, math.floor(channel // reduction), 1, padding=0, bias=bias),
             nn.ReLU(inplace=True),
-            nn.Conv2d(math.floor(channel / reduction), channel, 1, padding=0, bias=bias),
+            nn.Conv2d(math.floor(channel // reduction), channel, 1, padding=0, bias=bias),
             nn.Sigmoid()
         )
 
@@ -140,6 +140,23 @@ class CALayer(nn.Module):
         y = self.conv_fc(y)
         return x * y
 
+
+class ESA(nn.Module):
+    def __init__(self, channel:int = 64):
+        super(ESA, self).__init__()
+
+        self.channel_f = nn.Conv2d(channel,1,3,1,1)
+        self.conv_f = nn.Sequential(
+            nn.Conv2d(1,1,2,2,0),
+            nn.ReLU(inplace=True),
+            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Conv2d(1,1,3,1,1),
+            nn.Sigmoid()
+        )
+    def forward(self, x):
+        y = self.channel_f(x)
+        y = self.conv_f(y)
+        return x * y
 
 class ResidualBlock(nn.Module):
     def __init__(self, channels: int = 64, kernel_size: int = 3, stride: int = 1, padding: int = 1, bias: bool = True):
@@ -179,7 +196,8 @@ class ResidualChannelAttentionGroup(nn.Module):
         self.rcab = nn.Sequential(*[
             ResidualChannelAttentionBlock(channels, kernel_size, stride, padding, bias, reduction) for _ in
             range(blocks)])
-
+        #self.esa = ESA(channels)
     def forward(self, x):
-        x = self.rcab(x)
-        return x
+        y = self.rcab(x)
+        #y = self.esa(y)
+        return y
