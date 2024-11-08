@@ -14,14 +14,14 @@ import traceback
 class Trainer:
     def __init__(self):
 
-        self.scale = 2
-        self.batch_size = 64
+        self.scale = 1
+        self.batch_size = 32
         self.crop_size = 128
         self.device = torch.device("cuda:0")
 
-        # self.netG = UNetResA(3, 3, [32, 64, 96, 128], [4, 4, 4, 4], True).to(self.device)
+        self.netG = UNetResA(3, 3, [48, 96, 144, 192], [4, 2, 2, 4], True).to(self.device)
         # self.netG = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=24, num_conv=8, upscale=2).to(self.device)
-        self.netG = SPAN(3, 3, 48, 2, True).to(self.device)
+        # self.netG = SPAN(3, 3, 48, 2, True).to(self.device)
         # self.netG = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=48, num_conv=16, upscale=2, act_type='prelu').to(self.device)
 
         self.model_name = self.netG.get_model_name()
@@ -34,17 +34,18 @@ class Trainer:
         self.trainerG = AdamW(self.netG.parameters(), lr=self.lr, weight_decay=0.001)
 
         self.load_model()
-        self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.trainerG, milestones=[100, 200, 300, 400], gamma=0.5,
+        self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.trainerG, milestones=[200, 400, 600, 800], gamma=0.5,
                                                               last_epoch=self.cur_epoch - 1)
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.trainerG,T_0=10,eta_min=self.lr * 5e-3)
         # self.update_lr()
-        self.train_iter, self.test_iter = dataset_neo.load_data(self.batch_size, self.crop_size, self.crop_size,
+        self.train_iter, self.test_iter = dataset.load_data(self.batch_size, self.crop_size, self.crop_size,
                                                                 scale=self.scale)
         self.total_step = len(self.train_iter)
 
         self.content_loss_factor = 1.0
 
     def train(self):
+        setup_seed()
         content_criterion = nn.L1Loss().to(self.device)
         self.netG.train()
         logger.info(f"NETWORK:{self.model_name}, SCALE:{self.scale}")
@@ -144,6 +145,7 @@ def setup_seed(seed=128):
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
+    logger.info(f"set random seed to {seed}")
 
 if __name__ == '__main__':
 

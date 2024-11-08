@@ -174,7 +174,7 @@ def rescale(x: torch.Tensor, task: str | None=None, min_length: int | None=None,
     if random.uniform(0, 1) < 0.5:
         target_width, target_height = target_height, target_width
 
-    print("target_width = ",target_width," target_height = ",target_height)
+    #print("target_width = ",target_width," target_height = ",target_height)
 
     if task == "first" or task == "second" or task == "nr":
 

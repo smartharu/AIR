@@ -1,11 +1,11 @@
 import random
-import time
-import numpy
+from utils.logger import logger
 import numpy as np
 import torch
 import torchvision
 import torchvision.transforms as TT
-from torch.nn import functional as F
+from torchvision.transforms import functional as TTF
+from torch.nn import functional as TF
 from torch.utils import data
 import os
 import math
@@ -29,13 +29,12 @@ GAMMA_LCD = 45454
 np.seterr(invalid='ignore')
 
 
-def read_images(is_train: bool = True) -> Tuple[Sequence[torch.Tensor], Sequence[str], Sequence[torch.Tensor]]:
+def read_images(is_train: bool = True) -> Tuple[Sequence[torch.Tensor], Sequence[str]]:
     mode = torchvision.io.image.ImageReadMode.RGB
     labels = []
     filenames = []
-    augs = []
-    # dataset = "SYNLA_EAIRDMS_MERGE"  # "final_data"#
-    dataset = r"E:\Encode\Dataset\AA"
+    dataset =  r"E:\Encode\Dataset\EAIRDMS_PLUS"  # "final_data"#
+    #dataset = r"E:\Encode\Dataset\AA"
     if is_train:
         train_list = os.listdir(os.path.join(dataset, "train"))
         for train_img in train_list:
@@ -51,7 +50,7 @@ def read_images(is_train: bool = True) -> Tuple[Sequence[torch.Tensor], Sequence
                 img = torchvision.io.read_image(os.path.join(dataset, "valid", valid_img), mode)
                 labels.append(img)
                 filenames.append(valid_img)
-    return labels, filenames, augs
+    return labels, filenames
 
 
 def predict_storage(dtype: torch.dtype, int_type: str = "short") -> str:
@@ -233,11 +232,11 @@ def filter2D(img: torch.Tensor, kernel_size: int, kernel: torch.Tensor) -> torch
 
     b, c, h, w = img.shape
 
-    img_pad = F.pad(img, (kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2), mode="reflect")
+    img_pad = TF.pad(img, (kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2), mode="reflect")
 
     kernel = kernel.view(1, 1, kernel_size, kernel_size).repeat(c, 1, 1, 1)
 
-    out = F.conv2d(img_pad, weight=kernel, bias=None, stride=1, groups=c)
+    out = TF.conv2d(img_pad, weight=kernel, bias=None, stride=1, groups=c)
 
     if dim == 2:
         out = out.squeeze(0).squeeze(0)
@@ -384,13 +383,13 @@ def poisson_noise(img: torch.Tensor, scale: float, gray_noise: bool = False):
 
 def crop(img: torch.Tensor, left: int = 0, right: int = 0, top: int = 0, bottom: int = 0) -> torch.Tensor:
     c, h, w = img.shape
-    ret = torchvision.transforms.functional.crop(img, left=left, top=top, height=h - top - bottom,
+    ret = TTF.crop(img, left=left, top=top, height=h - top - bottom,
                                                  width=w - left - right)
     return ret
 
 
 def add_border(img: torch.Tensor, left: int = 0, right: int = 0, top: int = 0, bottom: int = 0) -> torch.Tensor:
-    ret = torchvision.transforms.functional.pad(img, padding=[left, top, right, bottom], padding_mode="constant")
+    ret = TTF.pad(img, padding=[left, top, right, bottom], padding_mode="constant")
     return ret
 
 
@@ -795,27 +794,27 @@ class RandomRescale2:
         interpolation_kernels_back = random.choice(kernel_type_choice_wo_box[1])
 
         if sw == 128:
-            min_l = 96
+            min_l = 80
             max_l = 128
             anisotropic_l = 32
             h_l = 64
             t_l = 42
         elif sw == 144:
-            min_l = 108
+            min_l = 90
             max_l = 144
             anisotropic_l = 36
             h_l = 72
             t_l = 48
 
         elif sw == 64:
-            min_l = 48
+            min_l = 40
             max_l = 64
             anisotropic_l = 16
             h_l = 32
             t_l = 20
 
         elif sw == 80:
-            min_l = 60
+            min_l = 50
             max_l = 80
             anisotropic_l = 20
             h_l = 40
@@ -1260,7 +1259,7 @@ class RandomBlend:
         if random.uniform(0, 1) > self.prob:
             return x
         c, h, w = x.shape
-        x = torchvision.transforms.functional.to_pil_image(x)
+        x = TTF.to_pil_image(x)
         alpha = random.uniform(0,1)
         if random.uniform(0,1)<self.color_prob:
             gray = random.randint(0,255)
@@ -1274,7 +1273,7 @@ class RandomBlend:
         bg = pim.new("RGB", (h, w), bg_color)
 
         ret = pim.blend(x,bg,alpha)
-        ret = torchvision.transforms.functional.to_tensor(ret)
+        ret = TTF.to_tensor(ret)
         return ret
 
 class RandomSafeRotate:
@@ -1286,12 +1285,12 @@ class RandomSafeRotate:
             return x
         c, h, w = x.shape
         p = math.ceil(math.sqrt(2) / 4 * max(h, w))
-        pad = TT.functional.pad(x, padding=[p, p, p, p], padding_mode="reflect")
+        pad = TTF.pad(x, padding=[p, p, p, p], padding_mode="reflect")
 
         ang = random.randint(-45, 45)
-        rot = torchvision.transforms.functional.rotate(pad, angle=ang,
+        rot = TTF.rotate(pad, angle=ang,
                                                        interpolation=torchvision.transforms.InterpolationMode.BILINEAR)
-        ret = TT.functional.center_crop(rot, output_size=[h, w])
+        ret = TTF.center_crop(rot, output_size=[h, w])
         return ret
 
 
@@ -1305,7 +1304,7 @@ class RandomRotate:
         c, h, w = x.shape
 
         ang = random.choice([-90, 90])
-        rot = torchvision.transforms.functional.rotate(x, angle=ang,
+        rot = TTF.rotate(x, angle=ang,
                                                        interpolation=torchvision.transforms.InterpolationMode.BILINEAR)
         return rot
 
@@ -1342,50 +1341,33 @@ class TrainDataset(torch.utils.data.Dataset):
         self.is_train = is_train
         self.scale = scale
 
-        imgs, names, augs = read_images(is_train)  # images list
+        self.images, self.names,= read_images(is_train)  # images list
 
-        self.img_cnts = len(imgs)
+        self.images_counts = len(self.images)
 
-        self.imgs = imgs
 
-        self.augs = augs
-
-        self.transform_GT = torchvision.transforms.Compose(
+        self.transform_GT = TT.Compose(
             [
-                torchvision.transforms.RandomInvert(0.5),
+                TT.RandomInvert(0.5),
                 TT.RandomApply([TT.ColorJitter(brightness=(0, 2), contrast=(0, 2), saturation=(0, 2), hue=(-0.5, 0.5))],
                                p=0.5),
-                torchvision.transforms.RandomHorizontalFlip(p=0.5),
-                torchvision.transforms.RandomVerticalFlip(p=0.5),
+                TT.RandomHorizontalFlip(p=0.5),
+                TT.RandomVerticalFlip(p=0.5),
                 #RandomRotate(prob=0.5),
                 RandomBlur(prob=0.3, kernel_size=(9, 23), sigma=(2.5, 5.0), radius=(2, 5)),
                 RandomGray(prob=0.3)
             ]
         )
 
-        self.transform_GT_VALID = torchvision.transforms.Compose(
+        self.transform_GT_VALID = TT.Compose(
             [
                 RandomGaussianBlur(prob=0.1, kernel_size=(9, 23), sigma=(3.0, 5.0))
             ]
         )
 
+
+
         self.transform_IR = TT.Compose(
-            [
-                TT.RandomOrder(
-                    [
-                        RandomRescale(prob=0.7, scale=(1.0, 2.6), anisotropic_p=0.0),
-                        RandomJPEGNoise(prob=0.5, jpeg_q=(100, 100), css_prob=1.0)
-                    ]
-                ),
-
-                TT.RandomOrder([
-                    RandomNoise(prob=0.3, gaussian_factor=25, gray_prob=0.5),
-                    RandomJPEGNoise(prob=0.3, jpeg_q=(15, 95), css_prob=0.0)
-                ])
-            ]
-        )
-
-        self.transform_IR_TEST = TT.Compose(
             [
 
                 TT.RandomOrder([
@@ -1403,8 +1385,32 @@ class TrainDataset(torch.utils.data.Dataset):
                     RandomJPEGNoise(prob=0.4, jpeg_q=(95, 100), css_prob=1.0)
                 ]),
                 TT.RandomOrder([
-                    RandomNoise(prob=0.2, gaussian_factor=25, gray_prob=0.5, blur_prob=0.1),
-                    RandomJPEGNoise(prob=0.2, jpeg_q=(25, 95), css_prob=0.0)
+                    RandomNoise(prob=0.4, gaussian_factor=25, gray_prob=0.5, blur_prob=0.1),
+                    RandomJPEGNoise(prob=0.4, jpeg_q=(25, 95), css_prob=0.0)
+                ])
+            ]
+        )
+
+        self.transform_IR_WOSCREENTONE = TT.Compose(
+            [
+
+                TT.RandomOrder([
+                    TT.RandomChoice([
+                        RandomLanczosFilter(prob=0.4, kernel_size=(7, 21), sigma=(2.0, 5.0)),
+                        RandomSincFilter(prob=0.4, kernel_size=(3, 21), sigma=(2.0, np.pi)),
+                    ]),
+                    RandomSharpen(prob=0.4, gray_prob=0.5, sigma=(0.2, 2.0)),
+                    RandomRescale2(prob=0.8, scale=(0.375, 1.0), anisotropic_p=0.3, anisotrpoic_scale=0.25),
+                    RandomGaussianBlur(prob=0.4, kernel_size=(3, 21), sigma=(0.2, 0.5)),
+                    TT.RandomChoice([
+                        RandomRescale2(prob=0.4, scale=(0.375, 1.0), anisotropic_p=0.3, anisotrpoic_scale=0.25),
+                        RandomBlur(prob=0.4, kernel_size=(3, 21), sigma=(0.1, 1.0), radius=1)
+                    ]),
+                    RandomJPEGNoise(prob=0.4, jpeg_q=(95, 100), css_prob=1.0)
+                ]),
+                TT.RandomOrder([
+                    RandomNoise(prob=0.4, gaussian_factor=25, gray_prob=0.5, blur_prob=0.1),
+                    RandomJPEGNoise(prob=0.4, jpeg_q=(25, 95), css_prob=0.0)
                 ])
             ]
         )
@@ -1420,15 +1426,7 @@ class TrainDataset(torch.utils.data.Dataset):
             ]
         )
 
-        self.transform_IR_TEST_V = TT.Compose(
-            [
-                RandomRescale(prob=1.0, scale=(2.0, 2.0)),
-                RandomNoise(prob=1.0, gaussian_factor=25, gray_prob=0.5, blur_prob=0.3),
-                RandomJPEGNoise(prob=1.0, jpeg_q=(25, 95), css_prob=0.0)
-            ]
-        )
-
-        self.transform_LR_TEST = torchvision.transforms.Compose(
+        self.transform_LR = TT.Compose(
             [
                 TT.RandomOrder([
                     TT.RandomChoice([
@@ -1447,36 +1445,16 @@ class TrainDataset(torch.utils.data.Dataset):
             ]
         )
 
-        self.down_scale = TT.Compose(
-            [
-                RandomDownscale(scale_factor=self.scale),
-                TT.RandomOrder([
-                    RandomNoise(prob=0.4, gaussian_factor=25, gray_prob=0.5, blur_prob=0.3),
-                    RandomJPEGNoise(prob=0.6, jpeg_q=(25, 95), css_prob=0.0)
-                    # RandomBlock(1.0)
-                ])
-            ]
-        )
-
         self.transform_pad = TT.Pad(padding=8)
 
-        self.transform_LR_TEST_V = torchvision.transforms.Compose(
+        self.transform_LR_TEST_V = TT.Compose(
             [
                 RandomDownscale(scale_factor=self.scale),
                 RandomJPEGNoise(prob=0.7, jpeg_q=95, css_prob=0.5)
             ]
         )
 
-        self.Deblock = TT.Compose(
-            [
-                RandomDownscale(scale_factor=self.scale),
-                RandomBlock(prob=1.0)
-            ]
-        )
-
-        self.Deblock_V = RandomJPEGNoise(prob=1.0, jpeg_q=(95, 100))
-
-        self.transform_IR_VALID = torchvision.transforms.Compose(
+        self.transform_IR_VALID = TT.Compose(
             [
                 RandomRescale(0.5, scale=(1.0, 2.0)),
                 RandomJPEGNoise(prob=1.0, jpeg_q=95),
@@ -1484,7 +1462,7 @@ class TrainDataset(torch.utils.data.Dataset):
             ]
         )
 
-        self.transform_LR_VALID = torchvision.transforms.Compose(
+        self.transform_LR_VALID = TT.Compose(
             [
                 RandomDownscale(scale_factor=self.scale),
                 RandomNoise(prob=1.0, gaussian_factor=5, gray_prob=0.5),
@@ -1492,51 +1470,41 @@ class TrainDataset(torch.utils.data.Dataset):
             ]
         )
 
-        print('read ' + str(self.img_cnts) + ' pictures')
-        print('read ' + str(len(self.imgs)) + ' examples')
-
-    def resize(self, imgs):
-        ret_list = []
-        for img in imgs:
-            ret_list.append(self.rand_cropv2(img, self.crop_height, self.crop_width))
-        return ret_list
+        logger.info(f"read {self.images_counts} pictures")
+        logger.info(f"read {len(self.images)} examples")
 
     def rand_crop(self, img, height, width):
-        rect = torchvision.transforms.RandomCrop.get_params(
+        rect = TT.RandomCrop.get_params(
             img, (height, width))
-        img = torchvision.transforms.functional.crop(img, *rect)
+        img = TTF.crop(img, *rect)
         return img
 
     def center_crop(self, img, height, width):
-
-        img = TT.functional.center_crop(img, (height, width))
+        img = TTF.center_crop(img, (height, width))
         return img
 
     def __getitem__(self, idx):
         if self.is_train:
             f = 0
-            x = self.imgs[idx]
-            #x = self.rand_crop(x, self.crop_height, self.crop_width)
-            x = self.center_crop(x, self.crop_height, self.crop_width)
+            x = self.images[idx]
+            x = self.rand_crop(x, self.crop_height, self.crop_width)
+            #x = self.center_crop(x, self.crop_height, self.crop_width)
             x = x.float() / 255.
-
-            #x = self.transform_GT(x)
+            x = self.transform_GT(x)
 
             lr = x.clone()
             hr = x.clone()
-
             if self.scale <= 1:
                 # 图像恢复
-                if random.uniform(0, 1) < 0.5:
+                if random.uniform(0, 1) < 0.4:
                     f = 1
                     lr = self.transform_pad(lr)
-                    # print(lr.shape)
-
-                lr = self.transform_IR_TEST(lr)
-                # lr = self.transform_EDGE(lr)
-
+                if "SCREENTONE" in self.names:
+                    lr = self.transform_IR(lr)
+                else:
+                    lr = self.transform_IR_WOSCREENTONE(lr)
                 if f == 1:
-                    lr = TT.functional.center_crop(lr, (self.crop_height, self.crop_width))
+                    lr = TTF.center_crop(lr, (self.crop_height, self.crop_width))
 
 
             else:
@@ -1548,30 +1516,26 @@ class TrainDataset(torch.utils.data.Dataset):
                 if f == 1:
                     lr = TT.functional.center_crop(lr, (self.crop_height, self.crop_width))
                 lr = self.down_scale(lr)'''
-                #lr = F.avg_pool2d(lr,2)
+                lr = TF.avg_pool2d(lr,2)
                 #lr = resize(lr,64,64,"point")
 
         else:
-            x = self.imgs[idx]
-            x = self.center_crop(x, self.crop_height, self.crop_width)
+            x = self.images[idx]
+            x = self.rand_crop(x, self.crop_height, self.crop_width)
             x = x.float() / 255.
-            #x = self.transform_GT_VALID(x)
-
+            x = self.transform_GT_VALID(x)
             lr = x.clone()
             hr = x.clone()
 
             if self.scale <= 1:
-                lr = self.transform_IR_TEST_V(lr)
-                # lr = self.transform_IR_VALID(lr)
-                # lr = self.Deblock_V(lr)
+                lr = self.transform_IR_VALID(lr)
             else:
-                #lr = self.transform_LR_TEST_V(lr)
-                lr = F.avg_pool2d(lr, 2)
+                lr = TF.avg_pool2d(lr, 2)
 
         return lr, hr
 
     def __len__(self):
-        return len(self.imgs)
+        return len(self.images)
 
 
 def load_data(batch_size, crop_height, crop_width, scale):
@@ -1586,8 +1550,9 @@ def load_data(batch_size, crop_height, crop_width, scale):
 
 
 if __name__ == "__main__":
-    img = test_images("__NEAREST__DOT_1443.png")
-    img = RandomBlend(prob=1.0)(img)
+    img = test_images("__SCREENTONE_14.png")
+    #img = gaussian_noise(img,25/255,)
+    img = jpeg_compression(img,25,False)
     img = TT.ToPILImage()(img)
     img.save("out2.png")
 
