@@ -6,6 +6,8 @@ from PIL import Image, ImageDraw
 import random
 import numpy as np
 import argparse
+
+from matplotlib.pyplot import margins
 from tqdm import tqdm
 import os
 from os import path
@@ -15,7 +17,55 @@ from torchvision.transforms import (
     InterpolationMode,
 )
 import torch
+from torch.utils.data.dataset import Dataset
+from torch.utils.data import DataLoader
+import torchvision
+import torchvision.transforms as TT
 import math
+
+
+def read_images(input_dir):
+    mode = torchvision.io.image.ImageReadMode.RGB
+    image_list = os.listdir(input_dir)
+    ret_images = []
+    for image in image_list:
+        if image.split(".").pop() in ["png"]:
+            img = torchvision.io.read_image(os.path.join(input_dir, image), mode)
+            ret_images.append(img)
+
+    return ret_images
+
+class BackGen:
+    def __init__(self,input_dir,h,w):
+        super().__init__()
+        self.files = read_images(input_dir)
+        self.transforms = TT.Compose([
+            TT.RandomCrop(h),
+            TT.RandomApply([TT.ColorJitter(brightness=0.3, hue=0.1)], p=0.25),
+            TT.RandomInvert(p=0.125),
+            TT.RandomAutocontrast(p=0.25),
+            TT.RandomGrayscale(p=0.25),
+            TT.ToPILImage()
+        ])
+        self.size = h
+
+    def __len__(self):
+        return len(self.files)
+
+    def generate(self):
+        file = random.choice(self.files)
+        file = file.float() / 255.
+        b,h,w = file.shape
+        if self.size > h:
+            h = self.size - h
+        else:
+            h = 0
+        if self.size > w:
+            w = self.size - w
+        else:
+            w = 0
+        file = TF.pad(file,[w,h],padding_mode="reflect")
+        return self.transforms(file)
 
 def generate_perlin_noise_2d(shape, res, fade=lambda t: 6 * t**5 - 15 * t**4 + 10 * t**3):
     delta = (res[0] / shape[0], res[1] / shape[1])
@@ -151,19 +201,11 @@ def gen_color(disable_color):
 
 def gen_dot_mask(size=400, allow_small=False):
     if random.uniform(0, 1) < 0.5:
-        if allow_small:
-            dot_size = random.choice([3, 5, 7])
-        else:
-            dot_size = random.choice([5, 7, 9, 11, 13])
+        dot_size = random.choice([3, 5, 7])
+        margin = random.randint(dot_size*2, dot_size * 3)
     else:
-        dot_size = random.choice([7, 9, 11, 13, 15, 17, 19, 21])
-    p = random.uniform(0, 1)
-    if p < 0.5:
-        margin = random.randint(2, dot_size)
-    elif p < 0.7:
-        margin = random.randint(2, dot_size * 2)
-    else:
-        margin = random.choice([7, 9, 11, 13, 15, 17, 19])
+        dot_size = random.choice([9, 11, 13, 15, 17, 19, 21]) #dots size
+        margin = random.randint(dot_size, dot_size * 2)
 
     kernel_size = dot_size + margin
     kernel = Image.new("L", (kernel_size, kernel_size), "black")
@@ -194,9 +236,8 @@ def gen_dot_mask(size=400, allow_small=False):
         grid = kernel.squeeze(0).repeat(repeat_y, repeat_x).unsqueeze(0)
         grid = TF.to_pil_image(grid)
         grid = TF.rotate(grid, angle=angle, interpolation=InterpolationMode.BILINEAR)
-        grid = TF.center_crop(grid, (size * 2, size * 2))
+        grid = TF.center_crop(grid, [size * 2, size * 2])
         grid = random_crop(grid, (size, size))
-
     return grid
 
 
@@ -207,7 +248,7 @@ def gen_dot_gradient_mask(size=400, allow_small=False):
         max_dot_size = random.randint(10, 20)
     min_dot_size = random.randint(3, max_dot_size)
 
-    margin = random.randint(3, max_dot_size)
+    margin = random.randint(min_dot_size*2, max_dot_size*3)
     cell_size = max_dot_size + margin
     cell_size += (cell_size % 2 == 0) * 1
     cell_n = (size * 2) // cell_size
@@ -281,11 +322,10 @@ def gen_sand_mask(size=400):
 def gen_line_overlay(size, line_scale=1):
     window = Image.new("L", (size * 2, size * 2), "black")
     if random.uniform(0, 1) < 0.5:
-        line_width = random.randint(1, 4) * 2
+        line_width = random.randint(1, 4)
     else:
-        line_width = random.randint(3, 16) * 2
+        line_width = random.randint(3, 16)
     line_width *= line_scale
-
     if random.uniform(0, 1) < 0.5:
         margin = random.randint(int(line_width * 0.5), line_width * 2)
     else:
@@ -310,7 +350,7 @@ def gen_line_overlay(size, line_scale=1):
 
     if random.uniform(0, 1) < 0.8:
         angle = random.uniform(-180, 180)
-        window = TF.rotate(window, angle=angle, interpolation=InterpolationMode.BILINEAR)
+        window = TF.rotate(window, angle=angle, interpolation=InterpolationMode.BICUBIC)
     window = TF.center_crop(window, (size, size))
 
     return window
@@ -319,18 +359,19 @@ def gen_line_overlay(size, line_scale=1):
 IMAGE_SIZE = 640
 WINDOW_SIZE = 400  # 320 < WINDOW_SIZE
 
-
+bg_gen = BackGen(r"E:\Encode\Dataset\Raw_Data\select\character",WINDOW_SIZE * 2, WINDOW_SIZE * 2)
 def gen(disable_color, disable_sand):
     fg_color, window_bg_color, bg_color, line_color, line_overlay_color, line_masking = gen_color(disable_color)
-    bg = Image.new("RGB", (WINDOW_SIZE * 2, WINDOW_SIZE * 2), window_bg_color)
+    #bg = Image.new("RGB", (WINDOW_SIZE * 2, WINDOW_SIZE * 2), window_bg_color)
+
     fg = Image.new("RGB", (WINDOW_SIZE * 2, WINDOW_SIZE * 2), fg_color)
 
     line_pattern = False
     random_rotate = random.uniform(0, 1) < 0.25
     p = random.uniform(0, 1)
-    if p < 0.333:#default 0.7
+    if p < 0.7:#default 0.7
         mask = gen_dot_mask(WINDOW_SIZE * 2, allow_small=not random_rotate)
-    elif p < 0.666:#default 0.75
+    elif p < 0.75:#default 0.75
         mask = gen_line_overlay(WINDOW_SIZE * 2, line_scale=1)
         line_pattern = True
     else:
@@ -338,10 +379,11 @@ def gen(disable_color, disable_sand):
             mask = gen_dot_gradient_mask(WINDOW_SIZE * 2, allow_small=not random_rotate)
         else:
             mask = gen_sand_mask(WINDOW_SIZE * 2)
-
+    bg = bg_gen.generate()
     bg.putalpha(255)
     fg.putalpha(mask)
     window = Image.alpha_composite(bg, fg)
+
     if not line_pattern and line_overlay_color is not None:
         mask = gen_line_overlay(WINDOW_SIZE * 2, line_scale=(4 if line_masking else 1))
         fg = Image.new("RGB", (WINDOW_SIZE * 2, WINDOW_SIZE * 2), line_overlay_color)
@@ -369,7 +411,7 @@ def gen(disable_color, disable_sand):
 
 
 def main():
-    num_samples = 4096
+    num_samples = 4500
     seed=71
     postfix = ""
     use_color = True
