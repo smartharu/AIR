@@ -14,15 +14,12 @@ import traceback
 class Trainer:
     def __init__(self):
 
-        self.scale = 1
+        self.scale = 2
         self.batch_size = 32
         self.crop_size = 128
         self.device = torch.device("cuda:0")
 
-        self.netG = UNetResA(3, 3, [48, 96, 144, 192], [4, 2, 2, 4], True).to(self.device)
-        # self.netG = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=24, num_conv=8, upscale=2).to(self.device)
-        # self.netG = SPAN(3, 3, 48, 2, True).to(self.device)
-        # self.netG = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=48, num_conv=16, upscale=2, act_type='prelu').to(self.device)
+        self.netG = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=24, num_conv=8, upscale=2).to(self.device)
 
         self.model_name = self.netG.get_model_name()
         set_log_name(self.model_name)
@@ -64,7 +61,6 @@ class Trainer:
 
                 content_loss = content_criterion(fake_sharp, sharp)
                 temp_psnr = cal_psnr(fake_sharp, sharp)
-
                 if epoch > 1 and temp_psnr < 0:
                     logger.info("psnr error! Try to restart training.")
                     raise ValueError("psnr error! try to restart training.")
@@ -80,6 +76,7 @@ class Trainer:
                         f"[TRAIN_PSNR {temp_psnr:.4f}] [LR {self.trainerG.state_dict()['param_groups'][0]['lr']}] [LOSS] {content_loss:.4f}")
 
             self.scheduler.step()
+            self.cur_epoch += 1
             train_psnr = np.mean(psnr)
             val_psnr = evaluate_accuracy(self.netG, self.test_iter, self.device)
 
@@ -148,13 +145,12 @@ def setup_seed(seed=128):
     logger.info(f"set random seed to {seed}")
 
 if __name__ == '__main__':
-
+    t = Trainer()
     np.seterr(invalid='ignore')
     cnt = 50
     while cnt:
         cnt -= 1
         try:
-            t = Trainer()
             t.train()
         except:
             print(traceback.format_exc())

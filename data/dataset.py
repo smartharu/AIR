@@ -33,8 +33,8 @@ def read_images(is_train: bool = True) -> Tuple[Sequence[torch.Tensor], Sequence
     mode = torchvision.io.image.ImageReadMode.RGB
     labels = []
     filenames = []
-    dataset =  r"E:\Encode\Dataset\EAIRDMS_PLUS"  # "final_data"#
-    #dataset = r"E:\Encode\Dataset\AA"
+    #dataset =  r"E:\Encode\Dataset\EAIRDMS_PLUS"  # "final_data"#
+    dataset = r"E:\Encode\Dataset\AA"
     if is_train:
         train_list = os.listdir(os.path.join(dataset, "train"))
         for train_img in train_list:

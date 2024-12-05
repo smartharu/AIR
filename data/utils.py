@@ -1,5 +1,6 @@
 import sys
 import torch
+import torchvision
 import torchvision.transforms.functional as TTF
 import torchvision.transforms as TT
 import random
@@ -29,6 +30,11 @@ def crop(img: torch.Tensor, left: int = 0, right: int = 0, top: int = 0, bottom:
 def add_border(img: torch.Tensor, left: int = 0, right: int = 0, top: int = 0, bottom: int = 0) -> torch.Tensor:
     ret = TTF.pad(img, padding=[left, top, right, bottom], padding_mode="constant")
     return ret
+
+def load_image(img:str) -> torch.Tensor:
+    mode = torchvision.io.image.ImageReadMode.RGB
+    image = torchvision.io.read_image(img, mode)
+    return image.float() / 255.
 
 class RandomSafeRotate:
     def __init__(self, prob: float = 0.3) -> None:
