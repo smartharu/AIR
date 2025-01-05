@@ -15,7 +15,7 @@ def resize(img: torch.Tensor, w: int, h: int, kernel: str = "cubic") -> torch.Te
         return to_tensor(im)
 
 
-def filter2D(img: torch.Tensor, kernel_size: int, kernel: torch.Tensor) -> torch.Tensor:
+def filter2d(img: torch.Tensor, kernel_size: int, kernel: torch.Tensor) -> torch.Tensor:
     dim = len(img.shape)
 
     if dim == 2:
@@ -40,7 +40,7 @@ def filter2D(img: torch.Tensor, kernel_size: int, kernel: torch.Tensor) -> torch
     return out
 
 
-def unsharp_mask(img: torch.Tensor, blur: str = "gaussian", kernel_size: int = 3, sigma: float = 2.0, gray: bool = True,
+def usm(img: torch.Tensor, blur: str = "gaussian", kernel_size: int = 3, sigma: float = 2.0, gray: bool = True,
                  radius: int = 1, amount: float = 1.0) -> torch.Tensor:
     if blur == "gaussian":
         nr = gaussian_blur(img, kernel_size, sigma).clamp(0, 1)
@@ -49,20 +49,20 @@ def unsharp_mask(img: torch.Tensor, blur: str = "gaussian", kernel_size: int = 3
     else:
         raise ValueError("未知blur")
 
-    makediff = (img - nr) * amount
-    mergediff = (img + makediff).clamp(0, 1)
+    make_diff = (img - nr) * amount
+    merge_diff = (img + make_diff).clamp(0, 1)
 
     if gray:
         img_yuv = rgb_to_yuv(img)
         img_u = img_yuv[..., 1, :, :]
         img_v = img_yuv[..., 2, :, :]
 
-        sharp_yuv = rgb_to_yuv(mergediff)
+        sharp_yuv = rgb_to_yuv(merge_diff)
         sharp_y = sharp_yuv[..., 0, :, :]
 
         res = yuv_to_rgb(torch.stack([sharp_y, img_u, img_v], -3))
     else:
-        res = mergediff
+        res = merge_diff
 
     return res.clamp(0, 1)
 
@@ -76,7 +76,7 @@ def gaussian_blur(img, ksize=5, sigma=0.5):
     h = torch.exp(torch.div(-((x * x) + (y * y)), 2 * sigma * sigma))
     h = torch.div(h, h.sum())
 
-    out = filter2D(img, ksize, h)
+    out = filter2d(img, ksize, h)
 
     return out.clamp(0, 1)
 
@@ -87,7 +87,7 @@ def box_blur(img: torch.Tensor, radius: int = 1) -> torch.Tensor:
     k = torch.ones((ksize, ksize), dtype=torch.float32)
     k = k / k.sum()
 
-    out = filter2D(img, ksize, k)
+    out = filter2d(img, ksize, k)
     return out.clamp(0, 1)
 
 
@@ -103,7 +103,7 @@ def mod_blur(img: torch.Tensor) -> torch.Tensor:
     k = torch.tensor([[parm1, parm2, parm1], [parm2, parm3, parm2], [parm1, parm2, parm1]], dtype=torch.float32)
     k = k / k.sum()
 
-    out = filter2D(img, ksize, k)
+    out = filter2d(img, ksize, k)
     return out.clamp(0, 1)
 
 
@@ -116,7 +116,7 @@ def lanczos_filter(img: torch.Tensor, ksize: int, sigma: float) -> torch.Tensor:
     h = torch.sinc(d) * torch.sinc(d / sigma)
     h = torch.div(h, h.sum())
 
-    out = filter2D(img, ksize, h)
+    out = filter2d(img, ksize, h)
     return out.clamp(0, 1)
 
 
@@ -132,7 +132,7 @@ def sinc_filter(img: torch.Tensor, ksize: int, cutoff: float, pad_to: int = 0) -
         kernel = np.pad(kernel, ((pad_size, pad_size), (pad_size, pad_size)))
 
     k = torch.from_numpy(kernel).float()
-    out = filter2D(img, ksize, k)
+    out = filter2d(img, ksize, k)
     return out.clamp(0, 1)
 
 
@@ -147,10 +147,10 @@ def laplacian_sharpen(img: torch.Tensor, gray: bool = True) -> torch.Tensor:
         y = img_yuv[..., 0, :, :]
         u = img_yuv[..., 1, :, :]
         v = img_yuv[..., 2, :, :]
-        y = filter2D(y, 3, k)
+        y = filter2d(y, 3, k)
         out = yuv_to_rgb(torch.stack([y, u, v], -3))
     else:
-        out = filter2D(img, 3, k)
+        out = filter2d(img, 3, k)
 
     return out.clamp(0, 1)
 
@@ -165,10 +165,10 @@ def sharpen(img: torch.Tensor, amount: float = 1.0, gray: bool = True) -> torch.
         y = img_yuv[..., 0, :, :]
         u = img_yuv[..., 1, :, :]
         v = img_yuv[..., 2, :, :]
-        y = filter2D(y, 3, k)
+        y = filter2d(y, 3, k)
         out = yuv_to_rgb(torch.stack([y, u, v], -3))
     else:
-        out = filter2D(img, 3, k)
+        out = filter2d(img, 3, k)
 
     return out.clamp(0, 1)
 
@@ -451,7 +451,7 @@ class RandomSharpen:
 
             blur_type = random.choice(self.blur_type)
 
-            sharp = unsharp_mask(x, blur_type, ksize, sigma, gray, radius, amount)
+            sharp = usm(x, blur_type, ksize, sigma, gray, radius, amount)
         elif sp_type == "laplacian":
             sharp = laplacian_sharpen(x, gray)
         else:

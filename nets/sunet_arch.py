@@ -141,9 +141,9 @@ if __name__ == "__main__":
     x = torch.randn((1, 3, 128, 128))
 
 
-    #net = UNetResA(3, 3, [48, 96, 144, 192], [4, 2, 2, 4], True)
+    net = UNetResA(3, 3, [48, 96, 144, 192], [4, 2, 2, 4], True)
 
-    net = UpUNetResA(3, 3, 2,[48, 96, 144, 192], [4, 2, 2, 4], True)
+    #net = UpUNetResA(3, 3, 2,[48, 96, 144, 192], [4, 2, 2, 4], True)
 
     # net = SPAU()
     # net = UNetResAMOD()

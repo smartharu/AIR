@@ -8,6 +8,7 @@ import numpy as np
 import argparse
 
 from matplotlib.pyplot import margins
+from sympy.printing.pretty.pretty_symbology import line_width
 from tqdm import tqdm
 import os
 from os import path
@@ -321,15 +322,22 @@ def gen_sand_mask(size=400):
 
 def gen_line_overlay(size, line_scale=1):
     window = Image.new("L", (size * 2, size * 2), "black")
-    if random.uniform(0, 1) < 0.5:
-        line_width = random.randint(1, 4)
+    if random.uniform(0,1)<0.6:
+        line_width = random.randint(1, 2)
+        if random.uniform(0, 1) < 0.6:
+            margin = random.randint(line_width + 1, 4)
+        else:
+            margin = random.randint(line_width + 1, 16)
     else:
-        line_width = random.randint(3, 16)
+        line_width = random.randint(2, 4)
+        margin = random.randint(line_width*2, 16)
     line_width *= line_scale
-    if random.uniform(0, 1) < 0.5:
-        margin = random.randint(int(line_width * 0.5), line_width * 2)
+    '''if random.uniform(0,1)<0.6:
+        margin = random.randint(line_width+1,4)
     else:
-        margin = random.randint(2, line_width * 4)
+        margin = random.randint(line_width+1, 16)'''
+    line_width = 1
+    margin = 2
     offset = random.randint(0, 20)
 
     gc = ImageDraw.Draw(window)
@@ -348,7 +356,7 @@ def gen_line_overlay(size, line_scale=1):
         x2 = TF.to_tensor(window.transpose(Image.ROTATE_90))
         window = TF.to_pil_image((x1 + x2).clamp(0, 1))
 
-    if random.uniform(0, 1) < 0.8:
+    if random.uniform(0, 1) < 0.2:
         angle = random.uniform(-180, 180)
         window = TF.rotate(window, angle=angle, interpolation=InterpolationMode.BICUBIC)
     window = TF.center_crop(window, (size, size))
@@ -359,7 +367,7 @@ def gen_line_overlay(size, line_scale=1):
 IMAGE_SIZE = 640
 WINDOW_SIZE = 400  # 320 < WINDOW_SIZE
 
-bg_gen = BackGen(r"E:\Encode\Dataset\Raw_Data\select\character",WINDOW_SIZE * 2, WINDOW_SIZE * 2)
+#bg_gen = BackGen(r"E:\Encode\Dataset\Raw_Data\select\character",WINDOW_SIZE * 2, WINDOW_SIZE * 2)
 def gen(disable_color, disable_sand):
     fg_color, window_bg_color, bg_color, line_color, line_overlay_color, line_masking = gen_color(disable_color)
     #bg = Image.new("RGB", (WINDOW_SIZE * 2, WINDOW_SIZE * 2), window_bg_color)
@@ -369,7 +377,7 @@ def gen(disable_color, disable_sand):
     line_pattern = False
     random_rotate = random.uniform(0, 1) < 0.25
     p = random.uniform(0, 1)
-    if p < 0.7:#default 0.7
+    '''if p < 0.7:#default 0.7
         mask = gen_dot_mask(WINDOW_SIZE * 2, allow_small=not random_rotate)
     elif p < 0.75:#default 0.75
         mask = gen_line_overlay(WINDOW_SIZE * 2, line_scale=1)
@@ -379,7 +387,10 @@ def gen(disable_color, disable_sand):
             mask = gen_dot_gradient_mask(WINDOW_SIZE * 2, allow_small=not random_rotate)
         else:
             mask = gen_sand_mask(WINDOW_SIZE * 2)
-    bg = bg_gen.generate()
+    '''
+    mask = gen_line_overlay(WINDOW_SIZE * 2, line_scale=1)
+    line_pattern = True
+    bg = Image.new("RGB", (WINDOW_SIZE * 2, WINDOW_SIZE * 2))#bg_gen.generate()
     bg.putalpha(255)
     fg.putalpha(mask)
     window = Image.alpha_composite(bg, fg)
@@ -405,13 +416,13 @@ def gen(disable_color, disable_sand):
     '''if random_rotate:
         angle = random.uniform(-180, 180)
         screen = TF.rotate(screen, angle=angle, interpolation=InterpolationMode.BILINEAR, fill=bg_color)'''
-    screen = TF.resize(screen, (IMAGE_SIZE, IMAGE_SIZE), interpolation=InterpolationMode.BOX, antialias=True)
+    #screen = TF.resize(screen, (IMAGE_SIZE, IMAGE_SIZE), interpolation=InterpolationMode.BOX, antialias=True)
     screen = TF.center_crop(screen,(320,320))
     return screen
 
 
 def main():
-    num_samples = 4500
+    num_samples = 10
     seed=71
     postfix = ""
     use_color = True
@@ -423,7 +434,7 @@ def main():
     postfix = "_" + postfix if postfix else ""
     for i in tqdm(range(num_samples), ncols=80):
         im = gen(disable_color=not use_color, disable_sand=disable_sand)
-        im.save(path.join(output_dir, f"__SCREENTONE_{i}{postfix}.png"))
+        im.save(path.join(output_dir, f"__LINEPATTERN_{i}{postfix}.png"))
 
 
 def _test_perlin():
