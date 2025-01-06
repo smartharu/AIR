@@ -1,8 +1,13 @@
+import math
+
 import torch
 import cv2
 import numpy as np
 import random
+from torchvision.transforms import functional as TTF
+from data.datatools import load_image
 from typing import Any, Mapping, Optional, Sequence, Union, Tuple
+from data.noise import gaussian_noise
 
 LAPLACIAN_KERNEL = torch.tensor([
     [0, -1, 0],
@@ -80,12 +85,19 @@ def choose_jpeg_quality(style: str, noise_level: int) -> Sequence[int]:
 
     return qualities
 
+def anime_jpeg_quality() -> Sequence[int]:
+    qualities = []
+    if random.uniform(0,1)<0.4:
+        qualities.append(random.randint(75, 95))
+    if random.uniform(0,1)<0.4:
+        qualities.append(random.randint(25, 75))
+    return qualities
 
 def sharpen(x: torch.Tensor, strength: float = 0.1) -> torch.Tensor:
     grad = torch.nn.functional.conv2d(x.mean(dim=0, keepdim=True).unsqueeze(0),
                                       weight=LAPLACIAN_KERNEL, stride=1, padding=1).squeeze(0)
     x = x + grad * strength
-    x = torch.clamp(x, 0., 1.)
+    #x = torch.clamp(x, 0., 1.)
     return x
 
 
@@ -104,13 +116,34 @@ def sharpen_noise_all(x: torch.Tensor, strength: float = 0.1) -> torch.Tensor:
     x = sharpen(x, strength=strength)
     return x
 
+def shift_jpeg_block(x:torch.Tensor,scale:int=2,x_shift=None):
+    # nunif: Add random crop before the second jpeg
+    c,h,w = x.shape
+    if x_shift is None:
+        if random.uniform(0, 0.5) < 0.5:
+            h_shift = random.randint(0, 7)
+            w_shift = random.randint(0, 7)
+        else:
+            h_shift = w_shift = 0
+    else:
+        h_shift = w_shift = x_shift
+
+    if h_shift > 0 or w_shift > 0:
+        h_shift = h_shift * scale
+        w_shift = w_shift * scale
+        x = TTF.crop(x, h_shift, w_shift, h - h_shift, w - w_shift)
+        #y = TTF.crop(y, h_shift, w_shift, y_h - y_h_shift, y_w - y_w_shift)
+        #assert y.size[0] == x.size[0] * y_scale and y.size[1] == x.size[1] * y_scale
+
+    return x
 
 class RandomJPEGNoise:
-    def __init__(self, prob: float = 0.5, jpeg_q: int | Tuple[int, int] = 95,
-                 css_prob: float = 0.5) -> None:
+    def __init__(self, prob: float = 0.6, jpeg_q: int | Tuple[int, int] = 95,
+                 css_prob: float = 0.5,sharpen_prob:float=0.2) -> None:
         self.prob = prob
         self.css_prob = css_prob
         self.jpeg_q = jpeg_q
+        self.sharpen_prob = sharpen_prob
 
     def __call__(self, x) -> torch.Tensor:
         if random.uniform(0, 1) > self.prob:
@@ -128,8 +161,49 @@ class RandomJPEGNoise:
         else:
             chroma_subsampling = False
 
-        x = jpeg_compression(x, jpeg_qualities, chroma_subsampling)
+        x_noise = jpeg_compression(x, jpeg_qualities, chroma_subsampling)
 
+        if random.uniform(0, 1) < self.sharpen_prob:
+            x_noise = sharpen_noise(x, x_noise, strength=random.uniform(0.05, 0.2))
+        return x_noise
+
+class RandomAnimeNoise:
+    def __init__(self, prob:float = 1.0,gaussian_prob:float = 0.2) -> None:
+        self.prob = prob
+        self.gaussian_prob = gaussian_prob
+
+    def __call__(self, x:torch.Tensor) -> torch.Tensor:
+        if random.uniform(0, 1) > self.prob:
+            return x
+        qualities = anime_jpeg_quality()
+        if len(qualities) == 0:
+            return x
+
+        if random.uniform(0,1) < self.gaussian_prob:
+            min_quality = min(qualities)
+
+            if random.uniform(0, 1) < 0.2:
+                blur = True
+            else:
+                blur = False
+
+            if random.uniform(0, 1) < 0.5:
+                gray = True
+            else:
+                gray = False
+
+            if min_quality <= 75:
+                gaussian_factor = random.randint(0, 15)
+            else:
+                gaussian_factor = math.floor(60 - min_quality * 0.6)
+
+            x = gaussian_noise(x,gaussian_factor / 255.,gray,blur)
+        origin_x = x
+        for q in qualities:
+            x = jpeg_compression(x, q, False)
+
+        if random.uniform(0, 1) < 0.2:
+            x = sharpen_noise(origin_x, x, strength=random.uniform(0.05, 0.2))
         return x
 
 
@@ -172,3 +246,10 @@ class RandomBlock:
                 else:
                     x = sharpen_noise_all(x, strength=random.uniform(0.1, 0.3))
         return x
+
+if __name__ == "__main__":
+    img = load_image("lun39b.png")
+    img = RandomAnimeNoise(prob=1.0,gaussian_prob=0.2)(img)
+    #res = sharpen_noise(original_x=img, noise_x=img_noise, strength= 0.2)
+    res = TTF.to_pil_image(img)
+    res.save("jpeg.png")

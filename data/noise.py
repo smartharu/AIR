@@ -1,14 +1,12 @@
 import random
-from sys import platform
-
+import math
 import torch
 from data.color import rgb_to_yuv, yuv_to_rgb
-from data.rescale import rescale, RS_RATE
-from typing import Tuple
-from data.utils import get_platform
+from data.rescale import rescale
+from data.datatools import get_platform
 
 
-def gaussian_noise(img: torch.Tensor, sigma: float, amount: float = 1.0, gray_noise: bool = False,
+def gaussian_noise(img: torch.Tensor, sigma: float, gray_noise: bool = False,
                    blur_noise: bool = False) -> torch.Tensor:
     source_width = img.shape[2]
 
@@ -28,20 +26,16 @@ def gaussian_noise(img: torch.Tensor, sigma: float, amount: float = 1.0, gray_no
 
     platform = get_platform()
 
-    min_length = RS_RATE["nr"][source_width]["min_length"]
-    max_length = RS_RATE["nr"][source_width]["max_length"]
-    anisotropic_length = RS_RATE["nr"][source_width]["anisotropic_length"]
-    half_length = RS_RATE["nr"][source_width]["half_length"]
-    third_length = RS_RATE["nr"][source_width]["third_length"]
+    min_length = math.floor(source_width*0.375)
+    max_length = math.floor(source_width*0.5)
+    anisotropic_length = math.floor(source_width*0.25)
 
     if blur_noise:
         if platform == "win":
-            rescale(rg, "nr", min_length=min_length, max_length=max_length, anisotropic_length=anisotropic_length,
-                    half_length=half_length, third_length=third_length, anisotropic_p=0.3)
+            rg = rescale(rg, min_length, max_length,0,anisotropic_length)
         else:
             rg = rg + 0.5
-            rescale(rg, "nr", min_length=min_length, max_length=max_length, anisotropic_length=anisotropic_length,
-                    half_length=half_length, third_length=third_length, anisotropic_p=0.3)
+            rg = rescale(rg, min_length, max_length,0,anisotropic_length)
             rg = rg - 0.5
     else:
         pass

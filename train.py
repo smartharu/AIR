@@ -7,7 +7,7 @@ from torch.optim.adamw import AdamW
 import os
 import torch.nn as nn
 from nets import SPAN,UNetResA,SRVGGNetCompact
-from data import dataset, dataset_neo
+from data import dataset
 import random
 import traceback
 
@@ -17,15 +17,13 @@ class Trainer:
         self.scale = 1
         self.batch_size = 32
         self.crop_size = 128
+        self.dataset = r"E:\Encode\Dataset\AA"
         self.device = torch.device("cuda:0")
 
-        self.netG = UNetResA(3, 3, [48, 96, 144, 192], [4, 2, 2, 4], True).to(self.device)
-        # self.netG = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=24, num_conv=8, upscale=2).to(self.device)
-        # self.netG = SPAN(3, 3, 48, 2, True).to(self.device)
-        # self.netG = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=48, num_conv=16, upscale=2, act_type='prelu').to(self.device)
+        self.netG = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=24, num_conv=8, upscale=1).to(self.device)
 
         self.model_name = self.netG.get_model_name()
-        set_log_name(self.model_name)
+
         self.epochs = 1000
         self.cur_epoch = 0
         self.restart_epoch = False
@@ -38,12 +36,11 @@ class Trainer:
                                                               last_epoch=self.cur_epoch - 1)
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.trainerG,T_0=10,eta_min=self.lr * 5e-3)
         # self.update_lr()
-        self.train_iter, self.test_iter = dataset.load_data(self.batch_size, self.crop_size, self.crop_size,
-                                                                scale=self.scale)
+        self.train_iter, self.test_iter = dataset.load_data(self.batch_size, self.crop_size, self.crop_size, self.scale,self.dataset)
         self.total_step = len(self.train_iter)
 
         self.content_loss_factor = 1.0
-
+        set_log_name(self.model_name)
     def train(self):
         setup_seed()
         content_criterion = nn.L1Loss().to(self.device)
@@ -64,7 +61,6 @@ class Trainer:
 
                 content_loss = content_criterion(fake_sharp, sharp)
                 temp_psnr = cal_psnr(fake_sharp, sharp)
-
                 if epoch > 1 and temp_psnr < 0:
                     logger.info("psnr error! Try to restart training.")
                     raise ValueError("psnr error! try to restart training.")
@@ -80,6 +76,7 @@ class Trainer:
                         f"[TRAIN_PSNR {temp_psnr:.4f}] [LR {self.trainerG.state_dict()['param_groups'][0]['lr']}] [LOSS] {content_loss:.4f}")
 
             self.scheduler.step()
+            self.cur_epoch += 1
             train_psnr = np.mean(psnr)
             val_psnr = evaluate_accuracy(self.netG, self.test_iter, self.device)
 
@@ -148,13 +145,12 @@ def setup_seed(seed=128):
     logger.info(f"set random seed to {seed}")
 
 if __name__ == '__main__':
-
+    t = Trainer()
     np.seterr(invalid='ignore')
     cnt = 50
     while cnt:
         cnt -= 1
         try:
-            t = Trainer()
             t.train()
         except:
             print(traceback.format_exc())

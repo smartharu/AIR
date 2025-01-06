@@ -132,8 +132,8 @@ class SPAN(Model):
     """
 
     def __init__(self,
-                 num_in_ch,
-                 num_out_ch,
+                 num_in_ch=3,
+                 num_out_ch=3,
                  feature_channels=48,
                  upscale=4,
                  bias=True,

@@ -32,3 +32,5 @@ class Model(nn.Module):
         torch.onnx.export(model, x, self.get_model_name() + ".onnx", export_params=True, opset_version=16,
                           input_names=['input'],
                           output_names=['output'], dynamic_axes=dynamic_axes)
+
+

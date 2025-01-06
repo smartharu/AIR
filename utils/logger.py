@@ -25,3 +25,5 @@ def set_log_name(name:str):
 
 logger = set_up_logger()
 
+if __name__ == "__main__":
+    pass
