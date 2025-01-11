@@ -107,6 +107,6 @@ class RandomNoise:
 
         amount = 1
 
-        x = gaussian_noise(x, sigma / 255., amount, gray_noise, blur_noise)
+        x = gaussian_noise(x, sigma / 255., gray_noise, blur_noise)
 
         return x.clamp(0, 1)
