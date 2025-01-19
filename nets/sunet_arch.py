@@ -89,7 +89,7 @@ class UpUNetResA(Model):
 
         self.reduction = 1
 
-        self.scale = 2
+        self.scale = scale
 
         self.head = nn.Conv2d(in_channels=in_nc, out_channels=nc[0], kernel_size=3, stride=1, padding=1, bias=False)
 
@@ -141,9 +141,9 @@ if __name__ == "__main__":
     x = torch.randn((1, 3, 128, 128))
 
 
-    net = UNetResA(3, 3, [48, 96, 144, 192], [4, 2, 2, 4], True)
-
-    #net = UpUNetResA(3, 3, 2,[48, 96, 144, 192], [4, 2, 2, 4], True)
+    net = UNetResA(3, 3, [32, 64, 128, 256], [4, 4, 4, 4], True)
+    #net = UpUNetResA(3, 3, 2, [32, 64, 128, 256], [4, 4, 4, 4], True)
+    #net = UNetResA(3, 3, [48, 96, 144, 192], [4, 2, 2, 4], True)
 
     # net = SPAU()
     # net = UNetResAMOD()

@@ -7,9 +7,9 @@ import torchvision.transforms.functional as TTF
 from torch.nn import functional as F
 from torch.utils import data
 import os
-from data.jpeg import RandomJPEGNoise, RandomAnimeNoise
-from data.transform import RandomBlur, RandomGray, RandomGaussianBlur, RandomLanczosFilter, RandomSincFilter, RandomSharpen
-from data.rescale import RandomRescale
+from data.jpeg import RandomJPEGNoise, RandomAnimeNoise, RandomBlock
+from data.transform import RandomBlur, RandomGray, RandomGaussianBlur, RandomLanczosFilter, RandomSincFilter, RandomSharpen,RandomSafeRotate
+from data.rescale import RandomRescale,RandomDownscale
 from data.noise import RandomNoise
 from data.datatools import RamdomAugBorder,load_image
 from utils.logger import logger
@@ -64,11 +64,13 @@ class TrainDataset(torch.utils.data.Dataset):
                                p=0.5),
                 torchvision.transforms.RandomHorizontalFlip(p=0.5),
                 torchvision.transforms.RandomVerticalFlip(p=0.5),
-                # RandomRotate(prob=0.5),
+                #RandomRotate(prob=0.5),
                 RandomBlur(prob=0.3, kernel_size=(9, 23), sigma=(2.5, 5.0), radius=(2, 5)),
                 RandomGray(prob=0.3)
             ]
         )
+
+        self.transform_ROATE = RandomSafeRotate(prob=0.3)
 
         self.transform_GT_VALID = torchvision.transforms.Compose(
             [
@@ -100,7 +102,31 @@ class TrainDataset(torch.utils.data.Dataset):
                     ]),
                     RandomJPEGNoise(prob=0.4, jpeg_q=(95, 100), css_prob=1.0)
                 ]),
-                RandomAnimeNoise(prob=1.0,gaussian_prob=0.4)
+                TT.RandomOrder([
+                    RandomNoise(prob=0.2, gaussian_factor=25, gray_prob=0.5, blur_prob=0.2),
+                    RandomAnimeNoise(prob=0.6, gaussian_prob=0.0)
+                ])
+            ]
+        )
+
+        self.transform_LR_TEST = TT.Compose(
+            [
+
+                TT.RandomOrder([
+                    TT.RandomChoice([
+                        RandomLanczosFilter(prob=0.4, kernel_size=(7, 21), sigma=(2.0, 5.0)),
+                        RandomSincFilter(prob=0.4, kernel_size=(3, 21), sigma=(2.0, np.pi)),
+                    ]),
+                    RandomSharpen(prob=0.4, gray_prob=0.5, sigma=(0.2, 2.0)),
+                    RandomGaussianBlur(prob=0.8, kernel_size=(3, 21), sigma=(0.2, 0.6)),
+                    TT.RandomChoice([
+                        RandomRescale(prob=0.7, task="second", anisotropic_p=.3),
+                        RandomBlur(prob=0.7, kernel_size=(3, 21), sigma=(0.1, 1.0), radius=1)
+                    ]),
+                    RandomJPEGNoise(prob=0.4, jpeg_q=(95, 100), css_prob=1.0)
+                ]),
+                RandomDownscale(scale_factor=self.scale),
+                RandomJPEGNoise(prob=0.6, jpeg_q=(25, 95), css_prob=0.0)
             ]
         )
 
@@ -121,7 +147,30 @@ class TrainDataset(torch.utils.data.Dataset):
                     ]),
                     RandomJPEGNoise(prob=0.4, jpeg_q=(95, 100), css_prob=1.0)
                 ]),
-                RandomAnimeNoise(prob=1.0, gaussian_prob=0.4)
+                TT.RandomOrder([
+                    RandomNoise(prob=0.2, gaussian_factor=25, gray_prob=0.5, blur_prob=0.2),
+                    RandomAnimeNoise(prob=0.6, gaussian_prob=0.0)
+                ])
+            ]
+        )
+
+        self.transform_DEBLOCK = TT.Compose(
+            [
+                TT.RandomOrder([
+                    RandomBlock(prob=1.0),
+                    RandomGaussianBlur(prob=0.1, kernel_size=(3, 21), sigma=(0.2, 0.5)),
+                    RandomLanczosFilter(prob=0.1, kernel_size=(3, 5), sigma=(2.0, 5.0)),
+                ])
+
+            ]
+        )
+
+        self.transform_DEBLOCK_V = TT.Compose(
+            [
+                TT.RandomOrder([
+                    RandomJPEGNoise(prob=1.0, jpeg_q=50, css_prob=0.5)
+                ])
+
             ]
         )
 
@@ -155,7 +204,8 @@ class TrainDataset(torch.utils.data.Dataset):
             x = self.images[idx]
             x = rand_crop(x, self.crop_height, self.crop_width)
             x = x.float() / 255.
-
+            if "LINEPATTERN" in self.names:
+                x = self.transform_ROATE(x)
             x = self.transform_GT(x)
 
             lr = x.clone()
@@ -171,13 +221,14 @@ class TrainDataset(torch.utils.data.Dataset):
                     lr = self.transform_IR_SCREENTONE_TEST(lr)
                 else:
                     lr = self.transform_IR_TEST(lr)
+                #lr = self.transform_DEBLOCK(lr)
                 if f == 1:
                     lr = TT.functional.center_crop(lr, [self.crop_height, self.crop_width])
             else:
                 # 图像超分
                 #lr = self.transform_LR_TEST(lr)
                 #lr = TTF.resize(lr,size = [lr.shape[2]//2,lr.shape[1]//2],interpolation=TT.InterpolationMode.NEAREST)
-                lr = F.avg_pool2d(lr,self.scale)
+                lr = self.transform_LR_TEST(lr)
         else:
             x = self.images[idx]
             x = rand_crop(x, self.crop_height, self.crop_width)
@@ -189,6 +240,7 @@ class TrainDataset(torch.utils.data.Dataset):
 
             if self.scale <= 1:
                 lr = self.transform_IR_TEST_V(lr)
+                #lr = self.transform_DEBLOCK_V(lr)
             else:
                 lr = F.avg_pool2d(lr,self.scale)
 

@@ -164,6 +164,28 @@ class RandomRescale:
 
         return x.clamp(0, 1)
 
+class RandomDownscale:
+    def __init__(self, scale_factor: int = 2) -> None:
+        self.scale_factor = scale_factor
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        sw = x.shape[2]
+        sh = x.shape[1]
+
+        kernel_box = ["box"]
+        kernel_bilinear = ["triangle"]
+        kernel_bicubic = ["hermite", "catrom", "mitchell", "robidoux", "spline"]
+        kernel_window = ["lanczos", "jinc", "sinc"]
+
+        kernel_type = [kernel_box, kernel_bilinear, kernel_bicubic, kernel_window]
+
+        kernel_type_weight = [1 / 2, 1 / 2, 1, 1]
+        kernel_type_choice = random.choices(kernel_type, weights=kernel_type_weight, k=1)
+
+        kernel = random.choice(kernel_type_choice[0])
+        x = resize(x, sw // self.scale_factor, sh // self.scale_factor, kernel)
+
+        return x
 
 class AntialiasX:
     """

@@ -6,7 +6,7 @@ import utils
 from torch.optim.adamw import AdamW
 import os
 import torch.nn as nn
-from nets import SPAN,UNetResA,SRVGGNetCompact
+from nets import SPAN,UNetResA,SRVGGNetCompact,UpUNetResA
 from data import dataset
 import random
 import traceback
@@ -17,17 +17,18 @@ class Trainer:
         self.scale = 1
         self.batch_size = 32
         self.crop_size = 128
-        self.dataset = r"E:\Encode\Dataset\AA"
+        self.dataset = r"E:\Encode\Dataset\YAPD"
         self.device = torch.device("cuda:0")
 
-        self.netG = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=24, num_conv=8, upscale=1).to(self.device)
+        self.netG = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=8, num_conv=8, upscale=1).to(self.device)
+        #self.netG = UpUNetResA(3,3,2,[32,64,128,256],[4,4,4,4],True).to(self.device)
 
         self.model_name = self.netG.get_model_name()
 
         self.epochs = 1000
         self.cur_epoch = 0
         self.restart_epoch = False
-        self.lr = 2e-4
+        self.lr = 1e-4
         # self.trainerG = Adam(self.netG.parameters(), lr=self.lr)
         self.trainerG = AdamW(self.netG.parameters(), lr=self.lr, weight_decay=0.001)
 

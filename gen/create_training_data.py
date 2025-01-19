@@ -74,13 +74,13 @@ class CreateTrainingData(Dataset):
 def main():
     num_workers = 8
 
-    input_dir = r"E:\Encode\Dataset\Raw_Data\YAPD"
+    input_dir = r"E:\Encode\Dataset\Raw_Data\DIV2K_Raw"
     image_type = "process"
     if not os.path.exists(os.path.join(input_dir,"output")):
         os.makedirs(os.path.join(input_dir,"output"), exist_ok=True)
 
     loader = DataLoader(
-        CreateTrainingData(os.path.join(input_dir,image_type), os.path.join(input_dir,"output"),image_type,size=256,stride=0.5,reject_rate=0.5),
+        CreateTrainingData(os.path.join(input_dir,image_type), os.path.join(input_dir,"output"),image_type,size=256,stride=0.5,reject_rate=0.0625),
         batch_size=1,
         shuffle=False,
         num_workers=num_workers,
