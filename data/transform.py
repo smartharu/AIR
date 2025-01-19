@@ -1,11 +1,13 @@
 import torch
 import torchvision.transforms.functional as TTF
+import torchvision
 import torch.nn.functional as TF
 from data.wand_io import to_wand_image, to_tensor
 from data.color import rgb_to_yuv, yuv_to_rgb
 from scipy import special
 import numpy as np
 import random
+import math
 from typing import Tuple
 
 
@@ -41,7 +43,7 @@ def filter2d(img: torch.Tensor, kernel_size: int, kernel: torch.Tensor) -> torch
 
 
 def usm(img: torch.Tensor, blur: str = "gaussian", kernel_size: int = 3, sigma: float = 2.0, gray: bool = True,
-                 radius: int = 1, amount: float = 1.0) -> torch.Tensor:
+                 radius: int = 1, amount: float = 1.0,clamp:bool=True) -> torch.Tensor:
     if blur == "gaussian":
         nr = gaussian_blur(img, kernel_size, sigma).clamp(0, 1)
     elif blur == "box":
@@ -64,10 +66,10 @@ def usm(img: torch.Tensor, blur: str = "gaussian", kernel_size: int = 3, sigma: 
     else:
         res = merge_diff
 
-    return res.clamp(0, 1)
+    return res.clamp(0, 1) if clamp else res
 
 
-def gaussian_blur(img, ksize=5, sigma=0.5):
+def gaussian_blur(img, ksize=5, sigma=0.5, clamp:bool=True):
     # gaussian kernel
 
     n = (ksize - 1.0) / 2.0
@@ -78,20 +80,20 @@ def gaussian_blur(img, ksize=5, sigma=0.5):
 
     out = filter2d(img, ksize, h)
 
-    return out.clamp(0, 1)
+    return out.clamp(0, 1) if clamp else out
 
 
-def box_blur(img: torch.Tensor, radius: int = 1) -> torch.Tensor:
+def box_blur(img: torch.Tensor, radius: int = 1, clamp:bool=True) -> torch.Tensor:
     ksize = 2 * radius + 1
 
     k = torch.ones((ksize, ksize), dtype=torch.float32)
     k = k / k.sum()
 
     out = filter2d(img, ksize, k)
-    return out.clamp(0, 1)
+    return out.clamp(0, 1) if clamp else out
 
 
-def mod_blur(img: torch.Tensor) -> torch.Tensor:
+def mod_blur(img: torch.Tensor, clamp:bool=True) -> torch.Tensor:
     ksize = 3
 
     parms = random.sample(range(1, 10), k=3)
@@ -104,10 +106,10 @@ def mod_blur(img: torch.Tensor) -> torch.Tensor:
     k = k / k.sum()
 
     out = filter2d(img, ksize, k)
-    return out.clamp(0, 1)
+    return out.clamp(0, 1) if clamp else out
 
 
-def lanczos_filter(img: torch.Tensor, ksize: int, sigma: float) -> torch.Tensor:
+def lanczos_filter(img: torch.Tensor, ksize: int, sigma: float,clamp:bool=True) -> torch.Tensor:
     n = (ksize - 1.0) / 2.0
     x = torch.arange(-n, n + 1, dtype=torch.float32).reshape(ksize, 1)
     y = torch.arange(-n, n + 1, dtype=torch.float32).reshape(1, ksize)
@@ -117,10 +119,10 @@ def lanczos_filter(img: torch.Tensor, ksize: int, sigma: float) -> torch.Tensor:
     h = torch.div(h, h.sum())
 
     out = filter2d(img, ksize, h)
-    return out.clamp(0, 1)
+    return out.clamp(0, 1) if clamp else out
 
 
-def sinc_filter(img: torch.Tensor, ksize: int, cutoff: float, pad_to: int = 0) -> torch.Tensor:
+def sinc_filter(img: torch.Tensor, ksize: int, cutoff: float, pad_to: int = 0, clamp:bool=True) -> torch.Tensor:
     kernel = np.fromfunction(
         lambda x, y: cutoff * special.j1(cutoff * np.sqrt(
             (x - (ksize - 1) / 2) ** 2 + (y - (ksize - 1) / 2) ** 2)) / (2 * np.pi * np.sqrt(
@@ -133,10 +135,10 @@ def sinc_filter(img: torch.Tensor, ksize: int, cutoff: float, pad_to: int = 0) -
 
     k = torch.from_numpy(kernel).float()
     out = filter2d(img, ksize, k)
-    return out.clamp(0, 1)
+    return out.clamp(0, 1) if clamp else out
 
 
-def laplacian_sharpen(img: torch.Tensor, gray: bool = True) -> torch.Tensor:
+def laplacian_sharpen(img: torch.Tensor, gray: bool = True, clamp:bool=True) -> torch.Tensor:
     if random.uniform(0, 1) < 0.5:
         k = torch.tensor([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=torch.float32)
     else:
@@ -152,10 +154,10 @@ def laplacian_sharpen(img: torch.Tensor, gray: bool = True) -> torch.Tensor:
     else:
         out = filter2d(img, 3, k)
 
-    return out.clamp(0, 1)
+    return out.clamp(0, 1) if clamp else out
 
 
-def sharpen(img: torch.Tensor, amount: float = 1.0, gray: bool = True) -> torch.Tensor:
+def sharpen(img: torch.Tensor, amount: float = 1.0, gray: bool = True, clamp:bool=True) -> torch.Tensor:
     kx = torch.tensor([(1 - 2 ** amount) / 2, 2 ** amount, (1 - 2 ** amount) / 2], dtype=torch.float32).reshape(3, 1)
     ky = torch.tensor([(1 - 2 ** amount) / 2, 2 ** amount, (1 - 2 ** amount) / 2], dtype=torch.float32).reshape(1, 3)
     k = kx * ky
@@ -170,7 +172,7 @@ def sharpen(img: torch.Tensor, amount: float = 1.0, gray: bool = True) -> torch.
     else:
         out = filter2d(img, 3, k)
 
-    return out.clamp(0, 1)
+    return out.clamp(0, 1) if clamp else out
 
 
 class RandomGray:
@@ -459,3 +461,19 @@ class RandomSharpen:
             sharp = sharpen(x, amount, gray)
 
         return sharp
+
+class RandomSafeRotate:
+    def __init__(self, prob: float = 0.3) -> None:
+        self.prob = prob
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        if random.uniform(0, 1) > self.prob:
+            return x
+        c, h, w = x.shape
+        p = math.ceil(math.sqrt(2) / 4 * max(h, w))
+        pad = TTF.pad(x, padding=[p, p, p, p], padding_mode="reflect")
+
+        ang = random.randint(-45, 45)
+        rot = TTF.rotate(pad, angle=ang,interpolation=torchvision.transforms.InterpolationMode.BILINEAR)
+        ret = TTF.center_crop(rot, output_size=[h, w])
+        return ret

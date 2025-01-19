@@ -76,7 +76,7 @@ if __name__ == "__main__":
 
     # net = UNetResA(3, 3, [32, 64, 96, 128], [4, 4, 4, 4], True, 1)
 
-    net = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=48, num_conv=16, upscale=2)
+    net = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=64, num_conv=16, upscale=2)
 
     # net = UNetResAMOD(3, 3, [32, 64, 96, 128], 4, True)
 

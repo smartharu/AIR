@@ -4,10 +4,13 @@ import torch
 import cv2
 import numpy as np
 import random
+
+from mpmath.identification import transforms
 from torchvision.transforms import functional as TTF
 from data.datatools import load_image
 from typing import Any, Mapping, Optional, Sequence, Union, Tuple
 from data.noise import gaussian_noise
+from data.transform import gaussian_blur
 
 LAPLACIAN_KERNEL = torch.tensor([
     [0, -1, 0],
@@ -93,22 +96,35 @@ def anime_jpeg_quality() -> Sequence[int]:
         qualities.append(random.randint(25, 75))
     return qualities
 
-def sharpen(x: torch.Tensor, strength: float = 0.1) -> torch.Tensor:
+def sharpen(x: torch.Tensor, strength: float = 0.1, clamp:bool=True) -> torch.Tensor:
     grad = torch.nn.functional.conv2d(x.mean(dim=0, keepdim=True).unsqueeze(0),
                                       weight=LAPLACIAN_KERNEL, stride=1, padding=1).squeeze(0)
     x = x + grad * strength
-    #x = torch.clamp(x, 0., 1.)
-    return x
+    return torch.clamp(x, 0., 1.) if clamp else x
 
 
 def sharpen_noise(original_x: torch.Tensor, noise_x: torch.Tensor, strength: float = 0.1) -> torch.Tensor:
     """ shapen (noise added image - original image) diff
     """
     noise = noise_x - original_x
-    noise = sharpen(noise, strength=strength)
+    noise = sharpen(noise, strength=strength,clamp=False)
     x = torch.clamp(original_x + noise, 0., 1.)
     return x
 
+def sharpen_blur_noise(original_x: torch.Tensor, filter_x: torch.Tensor, sharpen_strength: float = 0.1, blur_strength:float=0.2) -> torch.Tensor:
+    diff = filter_x - original_x
+    if random.uniform(0,1)<0.5:
+        if random.uniform(0,1)<0.2:
+            diff = sharpen(diff, strength=sharpen_strength,clamp=False)
+        if random.uniform(0,1)<0.2:
+            diff = gaussian_blur(diff, random.choice([3,5]), blur_strength,False)
+    else:
+        if random.uniform(0,1)<0.2:
+            diff = gaussian_blur(diff, random.choice([3,5]), blur_strength,False)
+        if random.uniform(0,1)<0.2:
+            diff = sharpen(diff, strength=sharpen_strength,clamp=False)
+    x = torch.clamp(original_x + diff, 0., 1.)
+    return x
 
 def sharpen_noise_all(x: torch.Tensor, strength: float = 0.1) -> torch.Tensor:
     """ just sharpen image
@@ -139,11 +155,11 @@ def shift_jpeg_block(x:torch.Tensor,scale:int=2,x_shift=None):
 
 class RandomJPEGNoise:
     def __init__(self, prob: float = 0.6, jpeg_q: int | Tuple[int, int] = 95,
-                 css_prob: float = 0.5,sharpen_prob:float=0.2) -> None:
+                 css_prob: float = 0.5,sharpen_blur_prob:float=0.2) -> None:
         self.prob = prob
         self.css_prob = css_prob
         self.jpeg_q = jpeg_q
-        self.sharpen_prob = sharpen_prob
+        self.sharpen_blur_prob = sharpen_blur_prob
 
     def __call__(self, x) -> torch.Tensor:
         if random.uniform(0, 1) > self.prob:
@@ -163,8 +179,8 @@ class RandomJPEGNoise:
 
         x_noise = jpeg_compression(x, jpeg_qualities, chroma_subsampling)
 
-        if random.uniform(0, 1) < self.sharpen_prob:
-            x_noise = sharpen_noise(x, x_noise, strength=random.uniform(0.05, 0.2))
+        if random.uniform(0, 1) < self.sharpen_blur_prob:
+            x_noise = sharpen_blur_noise(x, x_noise, random.uniform(0.05, 0.2), random.uniform(0.2, 0.5))
         return x_noise
 
 class RandomAnimeNoise:
@@ -203,7 +219,7 @@ class RandomAnimeNoise:
             x = jpeg_compression(x, q, False)
 
         if random.uniform(0, 1) < 0.2:
-            x = sharpen_noise(origin_x, x, strength=random.uniform(0.05, 0.2))
+            x = sharpen_blur_noise(origin_x, x, random.uniform(0.05, 0.2), random.uniform(0.2, 0.5))
         return x
 
 
@@ -240,16 +256,16 @@ class RandomBlock:
 
         for i, quality in enumerate(qualities):
             x = jpeg_compression(x, quality, subsampling)
-            if i == 0 and self.style == "photo" and noise_level in {2, 3} and random.uniform(0, 1) < 0.2:
+            if i == 0 and noise_level in {2, 3} and random.uniform(0, 1) < 0.2:
                 if random.uniform(0, 1) < 0.75:
-                    x = sharpen_noise(original_x, x, strength=random.uniform(0.05, 0.2))
-                else:
-                    x = sharpen_noise_all(x, strength=random.uniform(0.1, 0.3))
+                    x = sharpen_blur_noise(original_x, x, random.uniform(0.05, 0.2), random.uniform(0.2, 0.5))
         return x
 
 if __name__ == "__main__":
     img = load_image("lun39b.png")
-    img = RandomAnimeNoise(prob=1.0,gaussian_prob=0.2)(img)
+    img_noise = jpeg_compression(img, 55, True)
+    x = sharpen_blur_noise(img,img_noise,random.uniform(0.05, 0.2),random.uniform(0.2, 0.5))
+    #img = jpeg_compression(img,95,True)
     #res = sharpen_noise(original_x=img, noise_x=img_noise, strength= 0.2)
-    res = TTF.to_pil_image(img)
+    res = TTF.to_pil_image(x)
     res.save("jpeg.png")
