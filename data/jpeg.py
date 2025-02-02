@@ -26,7 +26,7 @@ def jpeg_compression(img: torch.Tensor, quality: int = 90, subsampling: bool = T
     else:
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality, int(cv2.IMWRITE_JPEG_SAMPLING_FACTOR),
                         cv2.IMWRITE_JPEG_SAMPLING_FACTOR_444]
-    _, encimg = cv2.imencode('.jpg', img * 255., encode_param)
+    _, encimg = cv2.imencode('.jpg', (img * 255.).astype(np.uint8), encode_param)
     img = np.float32(cv2.imdecode(encimg, 1)) / 255.
     img = torch.from_numpy(img).permute(2, 0, 1).clamp(0, 1)
     return img

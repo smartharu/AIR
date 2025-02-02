@@ -146,12 +146,12 @@ def setup_seed(seed=128):
     logger.info(f"set random seed to {seed}")
 
 if __name__ == '__main__':
-    t = Trainer()
     np.seterr(invalid='ignore')
     cnt = 50
     while cnt:
         cnt -= 1
         try:
+            t = Trainer()
             t.train()
         except:
             print(traceback.format_exc())

@@ -59,12 +59,12 @@ class TrainDataset(torch.utils.data.Dataset):
 
         self.transform_GT = torchvision.transforms.Compose(
             [
-                torchvision.transforms.RandomInvert(0.5),
+                torchvision.transforms.RandomInvert(0.3),
                 TT.RandomApply([TT.ColorJitter(brightness=(0, 2), contrast=(0, 2), saturation=(0, 2), hue=(-0.5, 0.5))],
-                               p=0.5),
+                               p=0.3),
                 torchvision.transforms.RandomHorizontalFlip(p=0.5),
                 torchvision.transforms.RandomVerticalFlip(p=0.5),
-                #RandomRotate(prob=0.5),
+                RandomSafeRotate(prob=0.3),
                 RandomBlur(prob=0.3, kernel_size=(9, 23), sigma=(2.5, 5.0), radius=(2, 5)),
                 RandomGray(prob=0.3)
             ]
@@ -103,8 +103,9 @@ class TrainDataset(torch.utils.data.Dataset):
                     RandomJPEGNoise(prob=0.4, jpeg_q=(95, 100), css_prob=1.0)
                 ]),
                 TT.RandomOrder([
-                    RandomNoise(prob=0.2, gaussian_factor=25, gray_prob=0.5, blur_prob=0.2),
-                    RandomAnimeNoise(prob=0.6, gaussian_prob=0.0)
+                    RandomNoise(prob=0.4, gaussian_factor=25, gray_prob=0.5, blur_prob=0.2),
+                    RandomJPEGNoise(prob=0.4, jpeg_q=(25, 95), css_prob=0.0)
+                    #RandomAnimeNoise(prob=0.4, gaussian_prob=0.0)
                 ])
             ]
         )
@@ -126,7 +127,7 @@ class TrainDataset(torch.utils.data.Dataset):
                     RandomJPEGNoise(prob=0.4, jpeg_q=(95, 100), css_prob=1.0)
                 ]),
                 RandomDownscale(scale_factor=self.scale),
-                RandomJPEGNoise(prob=0.6, jpeg_q=(25, 95), css_prob=0.0)
+                RandomAnimeNoise(prob=0.6, gaussian_prob=0.0)
             ]
         )
 
@@ -148,8 +149,9 @@ class TrainDataset(torch.utils.data.Dataset):
                     RandomJPEGNoise(prob=0.4, jpeg_q=(95, 100), css_prob=1.0)
                 ]),
                 TT.RandomOrder([
-                    RandomNoise(prob=0.2, gaussian_factor=25, gray_prob=0.5, blur_prob=0.2),
-                    RandomAnimeNoise(prob=0.6, gaussian_prob=0.0)
+                    RandomNoise(prob=0.4, gaussian_factor=25, gray_prob=0.5, blur_prob=0.2),
+                    RandomJPEGNoise(prob=0.4, jpeg_q=(25, 95), css_prob=0.0)
+                    #RandomAnimeNoise(prob=0.6, gaussian_prob=0.0)
                 ])
             ]
         )
@@ -204,8 +206,8 @@ class TrainDataset(torch.utils.data.Dataset):
             x = self.images[idx]
             x = rand_crop(x, self.crop_height, self.crop_width)
             x = x.float() / 255.
-            if "LINEPATTERN" in self.names:
-                x = self.transform_ROATE(x)
+            #if "LINEPATTERN" in self.names:
+            #    x = self.transform_ROATE(x)
             x = self.transform_GT(x)
 
             lr = x.clone()

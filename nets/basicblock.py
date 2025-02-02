@@ -2,8 +2,7 @@ import torch
 from torch import nn
 from collections import OrderedDict
 import math
-import torch.nn.functional as F
-from torch.ao.nn.quantized.functional import upsample
+from torchvision.models.swin_transformer import SwinTransformerBlock
 
 
 def sequential(*args):
@@ -18,6 +17,7 @@ def sequential(*args):
                 modules.append(submodule)
         elif isinstance(module, nn.Module):
             modules.append(module)
+
     return nn.Sequential(*modules)
 
 
@@ -141,22 +141,25 @@ class CALayer(nn.Module):
         return x * y
 
 
-class ESA(nn.Module):
-    def __init__(self, channel:int = 64):
-        super(ESA, self).__init__()
+class SALayer(nn.Module):
+    def __init__(self, channel: int = 64):
+        super(SALayer, self).__init__()
 
-        self.channel_f = nn.Conv2d(channel,1,3,1,1)
-        self.conv_f = nn.Sequential(
-            nn.Conv2d(1,1,2,2,0),
-            nn.ReLU(inplace=True),
-            nn.Upsample(scale_factor=2, mode='nearest'),
-            nn.Conv2d(1,1,3,1,1),
-            nn.Sigmoid()
-        )
+        self.channel_reduction = nn.Conv2d(channel, 1, 3, 1, 1, bias=False)
+        self.channel_fusion = nn.Conv2d(3, 1, 3, 1, 1, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
     def forward(self, x):
-        y = self.channel_f(x)
-        y = self.conv_f(y)
+        channel_avg = torch.mean(x, dim=1, keepdim=True)
+        channel_max, _ = torch.max(x, dim=1, keepdim=True)
+        channel_reduction = self.channel_reduction(x)
+
+        y = torch.cat([channel_avg, channel_max, channel_reduction], dim=1)
+        y = self.channel_fusion(y)
+        y = self.sigmoid(y)
+
         return x * y
+
 
 class ResidualBlock(nn.Module):
     def __init__(self, channels: int = 64, kernel_size: int = 3, stride: int = 1, padding: int = 1, bias: bool = True):
@@ -196,8 +199,106 @@ class ResidualChannelAttentionGroup(nn.Module):
         self.rcab = nn.Sequential(*[
             ResidualChannelAttentionBlock(channels, kernel_size, stride, padding, bias, reduction) for _ in
             range(blocks)])
-        #self.esa = ESA(channels)
+
     def forward(self, x):
         y = self.rcab(x)
-        #y = self.esa(y)
         return y
+
+
+class ResidualHybridAttentionBlock(nn.Module):
+    def __init__(self, channels: int = 64, kernel_size: int = 3, stride: int = 1, padding: int = 1, bias: bool = True,
+                 reduction: int = 1):
+        super(ResidualHybridAttentionBlock, self).__init__()
+
+        self.conv1 = nn.Conv2d(channels, channels, kernel_size, stride, padding, bias=bias)
+        self.conv2 = nn.Conv2d(channels, channels, kernel_size, stride, padding, bias=bias)
+        self.leaky_relu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
+
+        self.channel_attention = CALayer(channels, reduction)
+        self.spatial_attention = SALayer(channels)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        y = self.conv2(self.leaky_relu(self.conv1(x)))
+        y = self.channel_attention(y)
+        y = self.spatial_attention(y)
+        return y + x
+
+
+class ResidualHybridAttentionGroup(nn.Module):
+    def __init__(self, channels: int = 64, kernel_size: int = 3, stride: int = 1, padding: int = 1, bias: bool = True,
+                 reduction: int = 1, blocks: int = 2):
+        super(ResidualHybridAttentionGroup, self).__init__()
+
+        self.rhab = nn.Sequential(*[
+            ResidualHybridAttentionBlock(channels, kernel_size, stride, padding, bias, reduction) for _ in
+            range(blocks)])
+
+    def forward(self, x):
+        y = self.rhab(x)
+        return y
+
+
+class ConvTransBlock(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, num_head: int, window_size: list[int], attn_type: str,
+                 norm_layer: nn.Module):
+        super().__init__()
+
+        self.swin_block = SwinTransformerBlock(
+            in_channels,
+            num_head,
+            window_size=window_size,
+            shift_size=[0 if attn_type == "W" else w // 2 for w in window_size],
+            mlp_ratio=2.,
+            dropout=0.,
+            attention_dropout=0.,
+            stochastic_depth_prob=0.,
+            norm_layer=norm_layer,
+        )
+
+        self.res_block = ResidualChannelAttentionBlock(
+            in_channels,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            bias=True,
+            reduction=1,
+        )
+
+        self.conv_fusion = nn.Conv2d(in_channels * 2, out_channels, 1, 1, 0, bias=True)
+
+    def forward(self, x: torch.Tensor):
+        conv_x = self.res_block(x)
+        swin_x = x.permute(0, 2, 3, 1).contiguous()  # BHWC
+        swin_x = self.swin_block(swin_x)
+        swin_x = swin_x.permute(0, 3, 1, 2).contiguous()  # BCHW
+        fusion = self.conv_fusion(torch.cat((swin_x, conv_x), dim=1))
+        return fusion + x
+
+
+class ConvTransGroup(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, num_head: int, window_size: list[int], num_layers: int,
+                 norm_layer: nn.Module):
+        super().__init__()
+        layers = []
+        for i in range(num_layers):
+            if i % 2 == 0:
+                attn_type = "W"
+            else:
+                attn_type = "SW"
+
+            layers.append(ConvTransBlock(in_channels, out_channels, num_head, window_size, attn_type, norm_layer))
+
+        self.ctg = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor):
+        y = self.ctg(x)
+        return y + x
+
+
+if __name__ == "__main__":
+    m = SALayer(3)
+    # m = ESA(3)
+    t = torch.randn(1, 3, 128, 128)
+    res = m(t)
+
+    print(res.shape)

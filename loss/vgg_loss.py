@@ -116,12 +116,13 @@ class VGGLoss(nn.Module):
         # extract vgg features
         x_features = self.vgg(x)
         gt_features = self.vgg(gt.detach())
-        percep_loss = self.criterion(x, gt)
+        base_loss = self.criterion(x, gt)
+        percep_loss = 0
         for k in x_features.keys():
             print(k)
             percep_loss += self.criterion(x_features[k], gt_features[k]) * self.layer_weights[k]
         percep_loss *= self.perceptual_weight
-        return percep_loss
+        return percep_loss + base_loss
 
 
 if __name__ == "__main__":
