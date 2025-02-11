@@ -29,7 +29,7 @@ class Model(nn.Module):
         dynamic_axes = {'input': {0: 'batch_size', 2: 'height', 3: 'width'},
                         'output': {0: 'batch_size', 2: 'height', 3: 'width'}}
 
-        torch.onnx.export(model, x, self.get_model_name() + ".onnx", export_params=True, opset_version=16,
+        torch.onnx.export(model, x, self.get_model_name() + ".onnx", export_params=True, opset_version=17,
                           input_names=['input'],
                           output_names=['output'], dynamic_axes=dynamic_axes)
 

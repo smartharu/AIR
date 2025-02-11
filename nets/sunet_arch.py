@@ -24,7 +24,7 @@ class UNetResA(Model):
 
         self.nb = nb
 
-        self.reduction = 1
+        self.reduction = 8
 
         self.head = nn.Conv2d(in_channels=in_nc, out_channels=nc[0], kernel_size=3, stride=1, padding=1, bias=False)
 
